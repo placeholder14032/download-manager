@@ -12,6 +12,7 @@ type TimeRange struct {
 
 type Queue struct{
 	ID int64
+	Name string
 	DownloadLists []download.Download
 	SaveDir string
 	MaxConcurrent int64
