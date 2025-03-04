@@ -5,22 +5,22 @@ import(
 	"github.com/placeholder14032/download-manager/internal/queue"
 )
 // make sure you check state in each condition for error ...
-func AddDownload(queue Queue, url string) error {
+func AddDownload(queueID int64, url string) error {
 
 }
 
-func PauseDownload(queue Queue, id int64) error {
+func PauseDownload(queueID int64, id int64) error {
 
 }
 
-func ResumeDownload(queue Queue, id int64) error {
+func ResumeDownload(queueID int64, id int64) error {
 
 }
 
-func CancelDownload(queue Queue, id int64) error {
+func CancelDownload(queueID int64, id int64) error {
 
 }
 
-func RetryDownload(queue Queue, id int64) error {
+func RetryDownload(queueID int64, id int64) error {
 
 }
