@@ -2,6 +2,7 @@ package queue
 
 import (
 	"time"
+	"github.com/placeholder14032/download-manager/internal/download"
 )
 
 type TimeRange struct {
@@ -11,7 +12,7 @@ type TimeRange struct {
 
 type Queue struct{
 	ID int64
-	DownloadLists []Download
+	DownloadLists []download.Download
 	SaveDir string
 	MaxConcurrent int64
 	MaxBandwith int64
