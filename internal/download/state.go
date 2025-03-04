@@ -9,4 +9,5 @@ const (
 	Downloading
 	Starting
 	Retrying
+	Failed
 )

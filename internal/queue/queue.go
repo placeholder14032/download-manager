@@ -15,7 +15,7 @@ type Queue struct{
 	DownloadLists []download.Download
 	SaveDir string
 	MaxConcurrent int64
-	MaxBandwith int64
+	MaxBandwidth int64
 	HasTimeConstraint bool
 	TimeRange TimeRange
 	MaxRetries int64
