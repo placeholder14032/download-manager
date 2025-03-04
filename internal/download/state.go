@@ -10,4 +10,5 @@ const (
 	Starting
 	Retrying
 	Failed
+	Pending
 )
