@@ -2,12 +2,12 @@ package download
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"strings"
-	"time"
-    "os"
-    "io"
 	"sync"
+	"time"
 )
 
 type DownloadHandler struct {
@@ -16,6 +16,11 @@ type DownloadHandler struct {
 	WORKERS_COUNT int
 	paused        bool
 	lastByte      int // name?
+}
+
+type chunk struct {
+    start int
+    end   int
 }
 
 func (h *DownloadHandler) isAcceptRangeSupported(download Download) (bool, int) {
@@ -45,65 +50,83 @@ func (h *DownloadHandler) isAcceptRangeSupported(download Download) (bool, int) 
 }
 
 func (h *DownloadHandler) startDownloading(d Download) error {
-	supportsRange, contentLength := h.isAcceptRangeSupported(d)
+    supportsRange, contentLength := h.isAcceptRangeSupported(d)
 
-	if !supportsRange {
-		h.downloadWithoutRanges(d, contentLength)
-		return nil
-	}
-	
-	var wg sync.WaitGroup
-	errChan := make(chan error, h.WORKERS_COUNT)
-	
-	// Calculate chunk sizes
-	chunksPerWorker := contentLength / (h.CHUNK_SIZE * h.WORKERS_COUNT)
-	
-	for i := 0; i < h.WORKERS_COUNT; i++ {
-		wg.Add(1)
-		go func(workerID int) {
-			defer wg.Done()
-			
-			startByte := workerID * chunksPerWorker * h.CHUNK_SIZE
-			endByte := startByte + (chunksPerWorker * h.CHUNK_SIZE) - 1
-			
-			if workerID == h.WORKERS_COUNT-1 {
-				endByte = contentLength - 1
-			}
-			
-			for currentByte := startByte; currentByte <= endByte; currentByte += h.CHUNK_SIZE {
-				if h.paused {
-					return
-				}
-				
-				end := currentByte + h.CHUNK_SIZE - 1
-				if end > endByte {
-					end = endByte
-				}
-				
-				if err := h.downloadWithRanges(&d, currentByte, end); err != nil {
-					errChan <- err
-					return
-				}
-			}
-		}(i)
-	}
+    if (!supportsRange) {
+        return h.downloadWithoutRanges(d, contentLength)
+    }
 
-	// Wait for all workers and collect errors
-	go func() {
-		wg.Wait()
-		close(errChan)
-	}()
+	// we have 3 channels one for errors one for jobs (used to send download chunks to worker goroutines) and one for done
+    jobs := make(chan chunk, h.WORKERS_COUNT) // sends chunk information to workers
+    errChan := make(chan error, h.WORKERS_COUNT)
+    done := make(chan bool)
 
-	for err := range errChan {
-		if err != nil {
-			return err
-		}
-	}
-	
-	return nil
+
+    var wg sync.WaitGroup
+    for i := 0; i < h.WORKERS_COUNT; i++ {
+        wg.Add(1)
+        go h.worker(i, &d, jobs, errChan, &wg)
+    }
+
+    // managing what work to give to workers
+    go func() {
+        currentByte := 0
+        for currentByte < contentLength {
+            if h.paused {
+                break
+            }
+
+            end := currentByte + h.CHUNK_SIZE
+            if end > contentLength {
+                end = contentLength
+            }
+
+            jobs <- chunk{
+                start: currentByte,
+                end:   end - 1,
+            }
+
+            currentByte = end
+        }
+        close(jobs)
+    }()
+
+    // wiat for workers and handle errors
+    go func() {
+        wg.Wait()
+        close(errChan)
+        done <- true
+    }()
+
+    // handle errors
+    select {
+    case err := <-errChan:
+        if err != nil {
+            return err
+        }
+    case <-done:
+        return nil
+    }
+
+    return nil
 }
 
-func (h *DownloadHandler) downloadWithoutRanges(d Download, contentLength int) {
+func (h *DownloadHandler) worker(id int, d *Download, jobs <-chan chunk, errChan chan<- error, wg *sync.WaitGroup) {
+    defer wg.Done()
+
+    for chunk := range jobs {
+        if h.paused {
+            return
+        }
+
+        if err := h.downloadWithRanges(d, chunk.start, chunk.end); err != nil {
+            errChan <- fmt.Errorf("worker %d failed: %v", id, err)
+            return
+        }
+    }
+}
+
+func (h *DownloadHandler) downloadWithoutRanges(d Download, contentLength int) error {
 	panic("unimplemented")
 }
 
