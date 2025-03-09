@@ -23,6 +23,12 @@ type chunk struct {
     end   int
 }
 
+// to do: 
+// 1) downloadWithoutRanges
+// 2) a function to combine all the downloaded parts (.part files) into the final file
+// 3) add dd cleanup functionality to remove the temporary .part files after successful combination
+// 4) implement pause/resume functionality (the `paused` flag is already there but needs to be properly handled)
+
 func (h *DownloadHandler) isAcceptRangeSupported(download Download) (bool, int) {
 	var url = download.URL
 	req, _ := http.NewRequest("HEAD", url, nil)
@@ -126,6 +132,7 @@ func (h *DownloadHandler) worker(id int, d *Download, jobs <-chan chunk, errChan
     }
 }
 
+// Implement the `downloadWithoutRanges` function that's currently just a panic
 func (h *DownloadHandler) downloadWithoutRanges(d Download, contentLength int) error {
 	panic("unimplemented")
 }
