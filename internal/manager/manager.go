@@ -58,6 +58,18 @@ func (m *Manager) PauseDownload(queueId int64, dlId int64) error {
 	return errors.New("bad queue id")
 }
 
+func (m *Manager) ResumeDownload(queueId int64, dlId int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock() // make sure to unlock after use
+	//
+	for i := 0; i < len(m.qs); i++ {
+		if m.qs[i].ID == queueId {
+			return m.qs[i].ResumeDownload(dlId) // if it errors we return an error too
+		}
+	}
+	return errors.New("bad queue id")
+}
+
 
 func (m *Manager) Start() {
 	// load json

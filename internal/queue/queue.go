@@ -52,3 +52,16 @@ func (q *Queue) PauseDownload(dlId int64) error {
 	return errors.New("bad download id")
 }
 
+func (q *Queue) ResumeDownload(dlId int64) error {
+	for i := 0; i < len(q.DownloadLists); i++ {
+		if q.DownloadLists[i].ID == dlId {
+			if q.DownloadLists[i].Status != download.Paused {
+				return errors.New(fmt.Sprintf("download with id %d is not currently paused to be resumed", dlId))
+			}
+			q.DownloadLists[i].Status = download.Downloading
+			return nil
+		}
+	}
+	return errors.New("bad download id")
+}
+
