@@ -5,6 +5,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
+    "os"
+    "io"
+	"sync"
 )
 
 type DownloadHandler struct {
@@ -41,25 +44,101 @@ func (h *DownloadHandler) isAcceptRangeSupported(download Download) (bool, int) 
 	return true, int(resp.ContentLength)
 }
 
-func (h *DownloadHandler) startDownloading(d Download) {
+func (h *DownloadHandler) startDownloading(d Download) error {
 	supportsRange, contentLength := h.isAcceptRangeSupported(d)
 
-	if supportsRange {
-		// spliting to chunks
-		for !h.paused {
-			for i := 0; i < h.WORKERS_COUNT; i++ {
-				h.downloadWithRanges(&d, h.lastByte, h.lastByte+h.CHUNK_SIZE)
-				h.lastByte += h.CHUNK_SIZE
-			}
-		}
-
+	if !supportsRange {
+		h.downloadWithoutRanges(d, contentLength)
+		return nil
 	}
-	h.downloadWithoutRanges(d, contentLength)
+	
+	var wg sync.WaitGroup
+	errChan := make(chan error, h.WORKERS_COUNT)
+	
+	// Calculate chunk sizes
+	chunksPerWorker := contentLength / (h.CHUNK_SIZE * h.WORKERS_COUNT)
+	
+	for i := 0; i < h.WORKERS_COUNT; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			
+			startByte := workerID * chunksPerWorker * h.CHUNK_SIZE
+			endByte := startByte + (chunksPerWorker * h.CHUNK_SIZE) - 1
+			
+			if workerID == h.WORKERS_COUNT-1 {
+				endByte = contentLength - 1
+			}
+			
+			for currentByte := startByte; currentByte <= endByte; currentByte += h.CHUNK_SIZE {
+				if h.paused {
+					return
+				}
+				
+				end := currentByte + h.CHUNK_SIZE - 1
+				if end > endByte {
+					end = endByte
+				}
+				
+				if err := h.downloadWithRanges(&d, currentByte, end); err != nil {
+					errChan <- err
+					return
+				}
+			}
+		}(i)
+	}
+
+	// Wait for all workers and collect errors
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	for err := range errChan {
+		if err != nil {
+			return err
+		}
+	}
+	
+	return nil
 }
 
 func (h *DownloadHandler) downloadWithoutRanges(d Download, contentLength int) {
 	panic("unimplemented")
 }
 
-func (h *DownloadHandler) downloadWithRanges(download *Download, start int, end int) {
+func (h *DownloadHandler) downloadWithRanges(download *Download, start int, end int) error {
+	req, err := http.NewRequest("GET", download.URL, nil)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+
+    // Set range header
+    rangeHeader := fmt.Sprintf("bytes=%d-%d", start, end)
+    req.Header.Add("Range", rangeHeader)
+
+	resp, err := h.client.Do(req)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+    defer resp.Body.Close()
+
+    // Create part file name
+    partFileName := fmt.Sprintf("%s.part%d", download.FilePath, start)
+	file, err := os.Create(partFileName)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+    defer file.Close()
+
+    // Copy the response body to file
+	_, err = io.Copy(file, resp.Body)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+	return nil
 }
