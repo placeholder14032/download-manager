@@ -69,7 +69,7 @@ func (h *DownloadHandler) StartDownloading(d Download) error {
     done := make(chan bool)
 
     h.partsCount = (contentLength + h.CHUNK_SIZE - 1) / h.CHUNK_SIZE
-
+    fmt.Printf("Starting download with %d parts\n", h.partsCount)
 
     var wg sync.WaitGroup
     for i := 0; i < h.WORKERS_COUNT; i++ {
@@ -80,6 +80,7 @@ func (h *DownloadHandler) StartDownloading(d Download) error {
     // managing what work to give to workers
     go func() {
         currentByte := 0
+        partsNum := 0
         for currentByte < contentLength {
             if h.paused {
                 break
@@ -90,19 +91,22 @@ func (h *DownloadHandler) StartDownloading(d Download) error {
                 end = contentLength
             }
 
+            fmt.Printf("Scheduling part %d (bytes %d-%d)\n", partsNum, currentByte, end-1)
             jobs <- chunk{
                 start: currentByte,
                 end:   end - 1,
             }
-
+            partsNum++
             currentByte = end
         }
+        fmt.Printf("All %d parts scheduled for download\n", partsNum)
         close(jobs)
     }()
 
     // wiat for workers and handle errors
     go func() {
         wg.Wait()
+        fmt.Println("All workers are done")
         close(errChan)
         done <- true
     }()
@@ -113,11 +117,19 @@ func (h *DownloadHandler) StartDownloading(d Download) error {
         if err != nil {
             return err
         }
-    case <-done:
-        // combine parts if the doenload was successful
+        fmt.Println("Download completed, starting to combine parts...")
         if err := h.combineParts(&d, contentLength); err != nil {
             return fmt.Errorf("failed to combine parts: %v", err)
         }
+        fmt.Println("Parts combined successfully")
+        return nil
+    case <-done:
+        // combine parts if the doenload was successful
+        fmt.Println("Download completed, starting to combine parts...")
+        if err := h.combineParts(&d, contentLength); err != nil {
+            return fmt.Errorf("failed to combine parts: %v", err)
+        }
+        fmt.Println("Parts combined successfully")
         return nil
     }
 
@@ -163,12 +175,13 @@ func (h *DownloadHandler) downloadWithRanges(download *Download, start int, end 
     defer resp.Body.Close()
 
     // Create part file name
-    partFileName := fmt.Sprintf("%s.part%d", download.FilePath, start)
-	file, err := os.Create(partFileName)
-	if err != nil {
-		fmt.Println(err)
-		return err
-	}
+    partNumber := start / h.CHUNK_SIZE
+    partFileName := fmt.Sprintf("%s.part%d", download.FilePath, partNumber)
+    file, err := os.Create(partFileName)
+    if err != nil {
+        fmt.Println(err)
+        return err
+    }
     defer file.Close()
 
     // Copy the response body to file
@@ -181,45 +194,48 @@ func (h *DownloadHandler) downloadWithRanges(download *Download, start int, end 
 }
 
 func (h *DownloadHandler) combineParts(download *Download, contentLength int) error {
+    fmt.Printf("Starting to combine %d parts\n", h.partsCount)
+    // the final file
     combinedFile, err := os.Create(download.FilePath)
     if err != nil {
         return fmt.Errorf("failed to create the final file: %v", err)
     }
     defer combinedFile.Close()
 
-    // comibining parts in order
+    combinedParts := make([]bool, h.partsCount)
+    
+    //combining parts in order
     buffer := make([]byte, 32*1024)
     for i := 0; i < h.partsCount; i++ {
-        partFileName := fmt.Sprintf("%s.part%d", download.FilePath, i*h.CHUNK_SIZE)
+        partFileName := fmt.Sprintf("%s.part%d", download.FilePath, i)
         
         partFile, err := os.Open(partFileName)
         if err != nil {
             return fmt.Errorf("failed to open part file %s: %v", partFileName, err)
         }
 
-        // copy part to final file
-        for {
-            n, err := partFile.Read(buffer)
-            if n > 0 {
-                if _, writeErr := combinedFile.Write(buffer[:n]); writeErr != nil {
-                    partFile.Close()
-                    return fmt.Errorf("failed to write to final file: %v", writeErr)
-                }
-            }
-            if err == io.EOF {
-                break
-            }
-            if err != nil {
-                partFile.Close()
-                return fmt.Errorf("failed to read part file: %v", err)
-            }
+
+        written, err := io.CopyBuffer(combinedFile, partFile, buffer)
+        partFile.Close() 
+
+        if err != nil {
+            return fmt.Errorf("failed to copy part %d: %v", i, err)
         }
-        
-        partFile.Close()
-        
-        // deleting part file after successful copy
+
+        if written > 0 {
+            combinedParts[i] = true
+        }
+
+        // delte part file after successful copy
         if err := os.Remove(partFileName); err != nil {
-            return fmt.Errorf("failed to remove part file %s: %v", partFileName, err)
+            fmt.Printf("Warning: failed to remove part file %s: %v\n", partFileName, err)
+        }
+    }
+
+    // make sure all parts were combined
+    for i, combined := range combinedParts {
+        if !combined {
+            return fmt.Errorf("part %d was not combined successfully", i)
         }
     }
 
