@@ -1,13 +1,13 @@
 package download
 
 import (
-    "fmt"
-    "io"
-    "net/http"
-    "os"
-    "strings"
-    "sync"
-    "time"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
+	"sync"
+	"time"
 )
 
 type DownloadHandler struct {
@@ -340,7 +340,106 @@ func (h *DownloadHandler) Pause() error {
     return nil
 }
 
-func (h *DownloadHandler) Resume() {}
+func (h *DownloadHandler) Resume(d Download) error {
+    if h.State == nil {
+        return fmt.Errorf("download not initialized")
+    }
+
+    h.State.mutex.Lock()
+    if(!h.Paused){
+        return fmt.Errorf("download is not paused")
+    }
+
+    h.Paused = false
+    h.State.isPaused = false
+
+    // we need to create a  new pause channel
+    h.PauseChan = make(chan struct{})
+
+    // we should get incomplete parts and clear them from state
+    incompleteParts := make([]chunk, len(h.State.IncompleteParts))
+    copy(incompleteParts, h.State.IncompleteParts)
+    h.State.IncompleteParts = make([]chunk, 0)
+    h.State.mutex.Unlock()
+
+    return h.resumingDownload(d, incompleteParts)
+}
+
+func (h *DownloadHandler) resumingDownload(d Download, incompleteParts []chunk) error {
+    jobs := make(chan chunk, h.WORKERS_COUNT)
+    errChan := make(chan error, h.WORKERS_COUNT)
+    done := make(chan bool)
+    pauseAck := make(chan bool, h.WORKERS_COUNT)
+
+    var wg sync.WaitGroup
+    for i := 0; i < h.WORKERS_COUNT; i++ {
+        wg.Add(1)
+        go h.worker(i, &d, jobs, errChan, pauseAck, &wg)
+    }
+
+    // job distribution
+    go func() {
+        //handle incomplete parts
+        for _, part := range incompleteParts {
+            if !h.State.Completed[part.Start/h.CHUNK_SIZE] {
+                select {
+                case <-h.PauseChan:
+                    h.State.mutex.Lock()
+                    h.State.IncompleteParts = append(h.State.IncompleteParts, part)
+                    h.State.mutex.Unlock()
+                    return
+                case jobs <- part:
+                    fmt.Printf("Resuming part %d (bytes %d-%d)\n", part.Start/h.CHUNK_SIZE, part.Start, part.End)
+                }
+            }
+        }
+
+        // it should continue from where we left off
+        currentByte := h.State.CurrentByte
+        for currentByte < h.State.TotalBytes {
+            end := currentByte + int64(h.CHUNK_SIZE)
+            if end > h.State.TotalBytes {
+                end = h.State.TotalBytes
+            }
+
+            select {
+            case <-h.PauseChan:
+                h.State.mutex.Lock()
+                h.State.CurrentByte = currentByte
+                h.State.mutex.Unlock()
+                return
+            case jobs <- chunk{Start: int(currentByte), End: int(end - 1)}:
+                currentByte = end
+            }
+        }
+        close(jobs)
+    }()
+
+    // waiting for workers
+    go func() {
+        wg.Wait()
+        if !h.State.isPaused {
+            close(errChan)
+            done <- true
+        }
+    }()
+
+    // error handeling
+    select {
+    case err := <-errChan:
+        if err != nil {
+            return err
+        }
+        if !h.State.isPaused {
+            return h.combineParts(&d, int(h.State.TotalBytes))
+        }
+    case <-done:
+        return h.combineParts(&d, int(h.State.TotalBytes))
+    }
+
+    return nil
+}
+
 
 func NewDownloadHandler(client *http.Client, chunkSize int, workersCount int) *DownloadHandler {
     return &DownloadHandler{
