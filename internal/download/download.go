@@ -3,7 +3,7 @@ package download
 type Download struct {
 	ID           int64
 	URL          string
-	FileRath     string
+	FilePath     string
 	Status       State
 	Progress     int64
 	BytesWritten int64
