@@ -83,12 +83,14 @@ func (h *DownloadHandler) StartDownloading(d Download) error {
         }
     } else {
         h.State.mutex.Lock()
+
         h.State.Completed = make([]bool, h.PartsCount)
         h.State.IncompleteParts = make([]chunk, 0)
         h.State.CurrentByte = 0
         h.State.TotalBytes = int64(contentLength)
         h.State.isPaused = false
         h.State.isCombined = false
+        
         h.State.mutex.Unlock()
     }
 
@@ -227,7 +229,7 @@ func (h *DownloadHandler) downloadWithoutRanges(d Download, contentLength int) e
 
 func (h *DownloadHandler) downloadWithRanges(download *Download, start int, end int) error {
     req, err := http.NewRequest("GET", download.URL, nil)
-    if err != nil {
+    if (err != nil) {
         fmt.Println(err)
         return err
     }
@@ -237,7 +239,7 @@ func (h *DownloadHandler) downloadWithRanges(download *Download, start int, end 
     req.Header.Add("Range", rangeHeader)
 
     resp, err := h.Client.Do(req)
-    if err != nil {
+    if (err != nil) {
         fmt.Println(err)
         return err
     }
@@ -247,7 +249,7 @@ func (h *DownloadHandler) downloadWithRanges(download *Download, start int, end 
     partNumber := start / h.CHUNK_SIZE
     partFileName := fmt.Sprintf("%s.part%d", download.FilePath, partNumber)
     file, err := os.Create(partFileName)
-    if err != nil {
+    if (err != nil) {
         fmt.Println(err)
         return err
     }
@@ -255,7 +257,7 @@ func (h *DownloadHandler) downloadWithRanges(download *Download, start int, end 
 
     // Copy the response body to file
     _, err = io.Copy(file, resp.Body)
-    if err != nil {
+    if (err != nil) {
         fmt.Println(err)
         return err
     }
@@ -263,61 +265,87 @@ func (h *DownloadHandler) downloadWithRanges(download *Download, start int, end 
 }
 
 func (h *DownloadHandler) combineParts(download *Download, contentLength int) error {
-    // Check if parts exist before combining
+    // Check if target file already exists and has correct size
+    if info, err := os.Stat(download.FilePath); err == nil {
+        if info.Size() == int64(contentLength) {
+            return nil // File already complete
+        }
+    }
+
+    // Check for part files
     partFiles, err := filepath.Glob(fmt.Sprintf("%s.part*", download.FilePath))
     if err != nil {
         return fmt.Errorf("failed to check part files: %v", err)
     }
     
     if len(partFiles) == 0 {
-        // Parts already combined or don't exist
-        return nil
+        return fmt.Errorf("no part files found to combine")
+    }
+
+    // Verify all parts are present
+    partsMap := make(map[int]string)
+    for _, partFile := range partFiles {
+        var partNum int
+        _, err := fmt.Sscanf(filepath.Base(partFile), filepath.Base(download.FilePath)+".part%d", &partNum)
+        if err != nil {
+            continue
+        }
+        partsMap[partNum] = partFile
+    }
+
+    // Check if we have all parts
+    for i := 0; i < h.PartsCount; i++ {
+        if _, exists := partsMap[i]; !exists {
+            return fmt.Errorf("missing part file %d", i)
+        }
     }
 
     fmt.Printf("Starting to combine %d parts\n", h.PartsCount)
-    // the final file
+    
+    // Create or truncate the final file
     combinedFile, err := os.Create(download.FilePath)
     if err != nil {
-        return fmt.Errorf("failed to create the final file: %v", err)
+        return fmt.Errorf("failed to create final file: %v", err)
     }
     defer combinedFile.Close()
 
-    combinedParts := make([]bool, h.PartsCount)
-
-    // combining parts in order
     buffer := make([]byte, 32*1024)
     for i := 0; i < h.PartsCount; i++ {
-        partFileName := fmt.Sprintf("%s.part%d", download.FilePath, i)
+        // Check for pause signal
+        select {
+        case <-h.PauseChan:
+            fmt.Println("Combining paused")
+            return fmt.Errorf("combining paused")
+        default:
+            partFile, err := os.Open(partsMap[i])
+            if err != nil {
+                return fmt.Errorf("failed to open part %d: %v", i, err)
+            }
 
-        partFile, err := os.Open(partFileName)
-        if err != nil {
-            return fmt.Errorf("failed to open part file %s: %v", partFileName, err)
-        }
+            _, err = io.CopyBuffer(combinedFile, partFile, buffer)
+            partFile.Close()
 
-        written, err := io.CopyBuffer(combinedFile, partFile, buffer)
-        partFile.Close()
+            if err != nil {
+                return fmt.Errorf("failed to copy part %d: %v", i, err)
+            }
 
-        if err != nil {
-            return fmt.Errorf("failed to copy part %d: %v", i, err)
-        }
-
-        if written > 0 {
-            combinedParts[i] = true
-        }
-
-        // delete part file after successful copy
-        if err := os.Remove(partFileName); err != nil {
-            fmt.Printf("Warning: failed to remove part file %s: %v\n", partFileName, err)
-        }
-    }
-
-    // make sure all parts were combined
-    for i, combined := range combinedParts {
-        if !combined {
-            return fmt.Errorf("part %d was not combined successfully", i)
+            // Remove part file after successful copy
+            if err := os.Remove(partsMap[i]); err != nil {
+                fmt.Printf("Warning: failed to remove part file %s: %v\n", partsMap[i], err)
+            }
         }
     }
 
+    // Verify final file size
+    info, err := os.Stat(download.FilePath)
+    if err != nil {
+        return fmt.Errorf("failed to verify final file: %v", err)
+    }
+    if info.Size() != int64(contentLength) {
+        return fmt.Errorf("final file size mismatch: got %d, want %d", info.Size(), contentLength)
+    }
+
+    fmt.Println("All parts combined successfully")
     return nil
 }
 
@@ -399,10 +427,10 @@ func (h *DownloadHandler) resumingDownload(d Download, incompleteParts []chunk) 
     jobs := make(chan chunk, h.WORKERS_COUNT)
     errChan := make(chan error, h.WORKERS_COUNT)
     done := make(chan bool)
-    pauseAck := make(chan bool, h.WORKERS_COUNT)  // Add this line
+    pauseAck := make(chan bool, h.WORKERS_COUNT)
     var wg sync.WaitGroup
 
-    // Update worker call to include pauseAck
+    // Start workers
     for i := 0; i < h.WORKERS_COUNT; i++ {
         wg.Add(1)
         go h.worker(i, &d, jobs, errChan, pauseAck, &wg)
