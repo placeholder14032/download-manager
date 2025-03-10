@@ -9,9 +9,16 @@ import (
 	"github.com/placeholder14032/download-manager/internal/util"
 )
 
+type EventType int
 
+const (
+	DownloadFailed EventType = iota
+	DownloadFinished
+)
 
 type Event struct {
+	Type EventType
+	Body any // probably is gonna be a map[string]string or something more specific
 }
 
 type Manager struct {
