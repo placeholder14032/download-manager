@@ -18,10 +18,10 @@ const (
 
 type Request struct {
 	Type RequestType
-	body any // probably json or map[string]string
+	Body any // probably json or map[string]string
 }
 
 type Response struct {
-	body any // similar to Requests body
+	Body any // similar to Requests body
 }
 
