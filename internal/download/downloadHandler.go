@@ -15,7 +15,6 @@ type DownloadHandler struct {
     Client        *http.Client
     CHUNK_SIZE    int
     WORKERS_COUNT int
-    Paused        bool
     PartsCount    int
     State         *DownloadState
     PauseChan     chan struct{} 
@@ -26,8 +25,6 @@ type chunk struct {
     End   int
 }
 
-// to do:
-// 4) implement pause/resume functionality (the `paused` flag is already there but needs to be properly handled)
 
 func (h *DownloadHandler) isAcceptRangeSupported(download Download) (bool, int) {
     var url = download.URL
@@ -78,7 +75,7 @@ func (h *DownloadHandler) StartDownloading(d Download) error {
             CurrentByte:     0,
             TotalBytes:      int64(contentLength),
             mutex:           sync.Mutex{},
-            isPaused:        false,
+            IsPaused:        false,
             isCombined:      false,
         }
     } else {
@@ -88,7 +85,7 @@ func (h *DownloadHandler) StartDownloading(d Download) error {
         h.State.IncompleteParts = make([]chunk, 0)
         h.State.CurrentByte = 0
         h.State.TotalBytes = int64(contentLength)
-        h.State.isPaused = false
+        h.State.IsPaused = false
         h.State.isCombined = false
         
         h.State.mutex.Unlock()
@@ -109,7 +106,7 @@ func (h *DownloadHandler) StartDownloading(d Download) error {
         currentByte := h.State.CurrentByte
         for currentByte < int64(contentLength) {
             h.State.mutex.Lock()
-            if h.State.isPaused {
+            if h.State.IsPaused {
                 h.State.CurrentByte = currentByte
                 h.State.mutex.Unlock()
                 return
@@ -139,7 +136,7 @@ func (h *DownloadHandler) StartDownloading(d Download) error {
     // wait for workers and handle errors
     go func() {
         wg.Wait()
-        if !h.State.isPaused {
+        if !h.State.IsPaused {
             close(errChan)
             done <- true
         }
@@ -151,7 +148,7 @@ func (h *DownloadHandler) StartDownloading(d Download) error {
         if err != nil {
             return err
         }
-        if (!h.State.isPaused) {
+        if (!h.State.IsPaused) {
             fmt.Println("Download completed, starting to combine parts...")
             if err := h.combineParts(&d, contentLength); err != nil {
                 return fmt.Errorf("failed to combine parts: %v", err)
@@ -234,7 +231,7 @@ func (h *DownloadHandler) downloadWithRanges(download *Download, start int, end 
         return err
     }
 
-    // Set range header
+    // settigng range header
     rangeHeader := fmt.Sprintf("bytes=%d-%d", start, end)
     req.Header.Add("Range", rangeHeader)
 
@@ -245,7 +242,7 @@ func (h *DownloadHandler) downloadWithRanges(download *Download, start int, end 
     }
     defer resp.Body.Close()
 
-    // Create part file name
+    // create part files, we are writing in parts and combine it later
     partNumber := start / h.CHUNK_SIZE
     partFileName := fmt.Sprintf("%s.part%d", download.FilePath, partNumber)
     file, err := os.Create(partFileName)
@@ -255,7 +252,7 @@ func (h *DownloadHandler) downloadWithRanges(download *Download, start int, end 
     }
     defer file.Close()
 
-    // Copy the response body to file
+    // copy the response body to file
     _, err = io.Copy(file, resp.Body)
     if (err != nil) {
         fmt.Println(err)
@@ -265,24 +262,24 @@ func (h *DownloadHandler) downloadWithRanges(download *Download, start int, end 
 }
 
 func (h *DownloadHandler) combineParts(download *Download, contentLength int) error {
-    // Check if target file already exists and has correct size
     if info, err := os.Stat(download.FilePath); err == nil {
         if info.Size() == int64(contentLength) {
-            return nil // File already complete
+            return nil 
         }
     }
 
-    // Check for part files
     partFiles, err := filepath.Glob(fmt.Sprintf("%s.part*", download.FilePath))
     if err != nil {
         return fmt.Errorf("failed to check part files: %v", err)
     }
     
     if len(partFiles) == 0 {
+        if info, err := os.Stat(download.FilePath); err == nil && info.Size() == int64(contentLength) {
+            return nil
+        }
         return fmt.Errorf("no part files found to combine")
     }
 
-    // Verify all parts are present
     partsMap := make(map[int]string)
     for _, partFile := range partFiles {
         var partNum int
@@ -293,7 +290,6 @@ func (h *DownloadHandler) combineParts(download *Download, contentLength int) er
         partsMap[partNum] = partFile
     }
 
-    // Check if we have all parts
     for i := 0; i < h.PartsCount; i++ {
         if _, exists := partsMap[i]; !exists {
             return fmt.Errorf("missing part file %d", i)
@@ -302,7 +298,6 @@ func (h *DownloadHandler) combineParts(download *Download, contentLength int) er
 
     fmt.Printf("Starting to combine %d parts\n", h.PartsCount)
     
-    // Create or truncate the final file
     combinedFile, err := os.Create(download.FilePath)
     if err != nil {
         return fmt.Errorf("failed to create final file: %v", err)
@@ -310,39 +305,37 @@ func (h *DownloadHandler) combineParts(download *Download, contentLength int) er
     defer combinedFile.Close()
 
     buffer := make([]byte, 32*1024)
+    completedParts := make([]string, 0, len(partFiles))
+    
     for i := 0; i < h.PartsCount; i++ {
-        // Check for pause signal
-        select {
-        case <-h.PauseChan:
-            fmt.Println("Combining paused")
-            return fmt.Errorf("combining paused")
-        default:
-            partFile, err := os.Open(partsMap[i])
-            if err != nil {
-                return fmt.Errorf("failed to open part %d: %v", i, err)
-            }
-
-            _, err = io.CopyBuffer(combinedFile, partFile, buffer)
-            partFile.Close()
-
-            if err != nil {
-                return fmt.Errorf("failed to copy part %d: %v", i, err)
-            }
-
-            // Remove part file after successful copy
-            if err := os.Remove(partsMap[i]); err != nil {
-                fmt.Printf("Warning: failed to remove part file %s: %v\n", partsMap[i], err)
-            }
+        partFile, err := os.Open(partsMap[i])
+        if err != nil {
+            return fmt.Errorf("failed to open part %d: %v", i, err)
         }
+
+        _, err = io.CopyBuffer(combinedFile, partFile, buffer)
+        partFile.Close()
+
+        if err != nil {
+            return fmt.Errorf("failed to copy part %d: %v", i, err)
+        }
+        completedParts = append(completedParts, partsMap[i])
     }
 
-    // Verify final file size
     info, err := os.Stat(download.FilePath)
     if err != nil {
         return fmt.Errorf("failed to verify final file: %v", err)
     }
     if info.Size() != int64(contentLength) {
         return fmt.Errorf("final file size mismatch: got %d, want %d", info.Size(), contentLength)
+    }
+
+    // Single cleanup of ALL part files after successful combination
+    cleanupFiles, _ := filepath.Glob(fmt.Sprintf("%s.part*", download.FilePath))
+    for _, partFile := range cleanupFiles {
+        if err := os.Remove(partFile); err != nil {
+            fmt.Printf("Warning: failed to remove part file %s: %v\n", partFile, err)
+        }
     }
 
     fmt.Println("All parts combined successfully")
@@ -355,8 +348,8 @@ type DownloadState struct {
     CurrentByte     int64
     TotalBytes      int64
     mutex           sync.Mutex
-    isPaused        bool
-    isCombined      bool    // Add this field to track if parts are already combined
+    IsPaused        bool
+    isCombined      bool   
 }
 
 func (h *DownloadHandler) Pause() error {
@@ -367,14 +360,12 @@ func (h *DownloadHandler) Pause() error {
     h.State.mutex.Lock()
     defer h.State.mutex.Unlock()
 
-    if h.Paused {
+    if h.State.IsPaused {
         return fmt.Errorf("download is already paused")
     }
 
-    h.Paused = true
-    h.State.isPaused = true
+    h.State.IsPaused = true
     
-    // closing a channel signals all goroutines, here workers that are listening on it that they should stop
     if h.PauseChan != nil {
         close(h.PauseChan)
         fmt.Println("Download pause signal sent")
@@ -389,17 +380,17 @@ func (h *DownloadHandler) Resume(d Download) error {
     }
 
     h.State.mutex.Lock()
-    if(!h.Paused){
+    if !h.State.IsPaused {
+        h.State.mutex.Unlock()
         return fmt.Errorf("download is not paused")
     }
 
-    h.Paused = false
-    h.State.isPaused = false
+    h.State.IsPaused = false
 
-    // we need to create a  new pause channel
+    // Create new pause channel
     h.PauseChan = make(chan struct{})
 
-    // we should get incomplete parts and clear them from state
+    // Get incomplete parts and clear them from state
     incompleteParts := make([]chunk, len(h.State.IncompleteParts))
     copy(incompleteParts, h.State.IncompleteParts)
     h.State.IncompleteParts = make([]chunk, 0)
@@ -409,7 +400,7 @@ func (h *DownloadHandler) Resume(d Download) error {
 }
 
 func (h *DownloadHandler) resumingDownload(d Download, incompleteParts []chunk) error {
-    // Add completion check
+    //  check if it's already completed
     completedCount := 0
     h.State.mutex.Lock()
     for _, completed := range h.State.Completed {
@@ -419,29 +410,32 @@ func (h *DownloadHandler) resumingDownload(d Download, incompleteParts []chunk) 
     }
     h.State.mutex.Unlock()
 
-    // If already completed, just combine parts
+    // if already completed -> so we should just combine parts
     if completedCount == h.PartsCount {
         return h.combineParts(&d, int(h.State.TotalBytes))
     }
 
+    // else we should resume now we will do the same as in StartDownloading we are defining and alligning jobs
+    // then we will start workers and distribute jobs
     jobs := make(chan chunk, h.WORKERS_COUNT)
     errChan := make(chan error, h.WORKERS_COUNT)
     done := make(chan bool)
     pauseAck := make(chan bool, h.WORKERS_COUNT)
     var wg sync.WaitGroup
 
-    // Start workers
+    // start workers
     for i := 0; i < h.WORKERS_COUNT; i++ {
         wg.Add(1)
         go h.worker(i, &d, jobs, errChan, pauseAck, &wg)
     }
 
-    // Job distribution
+    // job distribution
     go func() {
         defer close(jobs)
         
-        // First handle incomplete parts
+        //  handle incomplete parts first
         for _, part := range incompleteParts {
+            
             h.State.mutex.Lock()
             isCompleted := h.State.Completed[part.Start/h.CHUNK_SIZE]
             h.State.mutex.Unlock()
@@ -460,7 +454,8 @@ func (h *DownloadHandler) resumingDownload(d Download, incompleteParts []chunk) 
             }
         }
 
-        // Continue with remaining parts
+        // then we will handle the remaining parts
+
         h.State.mutex.Lock()
         currentByte := h.State.CurrentByte
         h.State.mutex.Unlock()
@@ -498,7 +493,7 @@ func (h *DownloadHandler) resumingDownload(d Download, incompleteParts []chunk) 
     // Wait and handle completion
     go func() {
         wg.Wait()
-        if !h.State.isPaused {
+        if !h.State.IsPaused {
             close(errChan)
             done <- true
         }
@@ -509,7 +504,7 @@ func (h *DownloadHandler) resumingDownload(d Download, incompleteParts []chunk) 
         if err != nil {
             return err
         }
-        if !h.State.isPaused {
+        if !h.State.IsPaused {
             return h.combineParts(&d, int(h.State.TotalBytes))
         }
     case <-done:
@@ -524,7 +519,6 @@ func NewDownloadHandler(client *http.Client, chunkSize int, workersCount int) *D
         Client:        client,
         CHUNK_SIZE:    chunkSize,
         WORKERS_COUNT: workersCount,
-        Paused:        false,
         PauseChan:     make(chan struct{}),
         State:         &DownloadState{
             Completed:       make([]bool, 0),
@@ -532,7 +526,6 @@ func NewDownloadHandler(client *http.Client, chunkSize int, workersCount int) *D
             CurrentByte:     0,
             TotalBytes:      0,
             mutex:           sync.Mutex{},
-            isPaused:        false,
             isCombined:      false,
         },
     }
