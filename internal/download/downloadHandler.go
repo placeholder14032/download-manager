@@ -25,7 +25,6 @@ type chunk struct {
 }
 
 // to do: 
-// 3) add dd cleanup functionality to remove the temporary .part files after successful combination
 // 4) implement pause/resume functionality (the `paused` flag is already there but needs to be properly handled)
 
 func (h *DownloadHandler) isAcceptRangeSupported(download Download) (bool, int) {
