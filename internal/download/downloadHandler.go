@@ -11,11 +11,12 @@ import (
 )
 
 type DownloadHandler struct {
-	client        *http.Client
+	Client        *http.Client
 	CHUNK_SIZE    int
 	WORKERS_COUNT int
 	paused        bool
 	lastByte      int // name?
+    partsCount   int 
 }
 
 type chunk struct {
@@ -55,7 +56,7 @@ func (h *DownloadHandler) isAcceptRangeSupported(download Download) (bool, int) 
 	return true, int(resp.ContentLength)
 }
 
-func (h *DownloadHandler) startDownloading(d Download) error {
+func (h *DownloadHandler) StartDownloading(d Download) error {
     supportsRange, contentLength := h.isAcceptRangeSupported(d)
 
     if (!supportsRange) {
@@ -66,6 +67,8 @@ func (h *DownloadHandler) startDownloading(d Download) error {
     jobs := make(chan chunk, h.WORKERS_COUNT) // sends chunk information to workers
     errChan := make(chan error, h.WORKERS_COUNT)
     done := make(chan bool)
+
+    h.partsCount = (contentLength + h.CHUNK_SIZE - 1) / h.CHUNK_SIZE
 
 
     var wg sync.WaitGroup
@@ -111,6 +114,10 @@ func (h *DownloadHandler) startDownloading(d Download) error {
             return err
         }
     case <-done:
+        // combine parts if the doenload was successful
+        if err := h.combineParts(&d, contentLength); err != nil {
+            return fmt.Errorf("failed to combine parts: %v", err)
+        }
         return nil
     }
 
@@ -148,7 +155,7 @@ func (h *DownloadHandler) downloadWithRanges(download *Download, start int, end 
     rangeHeader := fmt.Sprintf("bytes=%d-%d", start, end)
     req.Header.Add("Range", rangeHeader)
 
-	resp, err := h.client.Do(req)
+	resp, err := h.Client.Do(req)
 	if err != nil {
 		fmt.Println(err)
 		return err
@@ -171,4 +178,50 @@ func (h *DownloadHandler) downloadWithRanges(download *Download, start int, end 
 		return err
 	}
 	return nil
+}
+
+func (h *DownloadHandler) combineParts(download *Download, contentLength int) error {
+    combinedFile, err := os.Create(download.FilePath)
+    if err != nil {
+        return fmt.Errorf("failed to create the final file: %v", err)
+    }
+    defer combinedFile.Close()
+
+    // comibining parts in order
+    buffer := make([]byte, 32*1024)
+    for i := 0; i < h.partsCount; i++ {
+        partFileName := fmt.Sprintf("%s.part%d", download.FilePath, i*h.CHUNK_SIZE)
+        
+        partFile, err := os.Open(partFileName)
+        if err != nil {
+            return fmt.Errorf("failed to open part file %s: %v", partFileName, err)
+        }
+
+        // copy part to final file
+        for {
+            n, err := partFile.Read(buffer)
+            if n > 0 {
+                if _, writeErr := combinedFile.Write(buffer[:n]); writeErr != nil {
+                    partFile.Close()
+                    return fmt.Errorf("failed to write to final file: %v", writeErr)
+                }
+            }
+            if err == io.EOF {
+                break
+            }
+            if err != nil {
+                partFile.Close()
+                return fmt.Errorf("failed to read part file: %v", err)
+            }
+        }
+        
+        partFile.Close()
+        
+        // deleting part file after successful copy
+        if err := os.Remove(partFileName); err != nil {
+            return fmt.Errorf("failed to remove part file %s: %v", partFileName, err)
+        }
+    }
+
+    return nil
 }
