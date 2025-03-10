@@ -25,8 +25,6 @@ type chunk struct {
 }
 
 // to do: 
-// 1) downloadWithoutRanges
-// 2) a function to combine all the downloaded parts (.part files) into the final file
 // 3) add dd cleanup functionality to remove the temporary .part files after successful combination
 // 4) implement pause/resume functionality (the `paused` flag is already there but needs to be properly handled)
 
@@ -151,9 +149,34 @@ func (h *DownloadHandler) worker(id int, d *Download, jobs <-chan chunk, errChan
     }
 }
 
-// Implement the `downloadWithoutRanges` function that's currently just a panic
 func (h *DownloadHandler) downloadWithoutRanges(d Download, contentLength int) error {
-	panic("unimplemented")
+    req, err := http.NewRequest("GET", d.URL, nil)
+    if err != nil {
+        return fmt.Errorf("failed to create request: %v", err)
+    }
+
+    resp, err := h.Client.Do(req)
+    if err != nil {
+        return fmt.Errorf("failed to execute request: %v", err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode >= 400 {
+        return fmt.Errorf("server returned error status: %d", resp.StatusCode)
+    }
+
+    file, err := os.Create(d.FilePath)
+    if err != nil {
+        return fmt.Errorf("failed to create file: %v", err)
+    }
+    defer file.Close()
+
+    _, err = io.Copy(file, resp.Body)
+    if err != nil {
+        return fmt.Errorf("failed to download file: %v", err)
+    }
+
+    return nil
 }
 
 func (h *DownloadHandler) downloadWithRanges(download *Download, start int, end int) error {
