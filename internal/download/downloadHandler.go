@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -56,7 +57,7 @@ func (h *DownloadHandler) isAcceptRangeSupported(download Download) (bool, int) 
 
 func (h *DownloadHandler) StartDownloading(d Download) error {
     supportsRange, contentLength := h.isAcceptRangeSupported(d)
-    if !supportsRange {
+    if (!supportsRange) {
         return h.downloadWithoutRanges(d, contentLength)
     }
 
@@ -78,6 +79,7 @@ func (h *DownloadHandler) StartDownloading(d Download) error {
             TotalBytes:      int64(contentLength),
             mutex:           sync.Mutex{},
             isPaused:        false,
+            isCombined:      false,
         }
     } else {
         h.State.mutex.Lock()
@@ -86,6 +88,7 @@ func (h *DownloadHandler) StartDownloading(d Download) error {
         h.State.CurrentByte = 0
         h.State.TotalBytes = int64(contentLength)
         h.State.isPaused = false
+        h.State.isCombined = false
         h.State.mutex.Unlock()
     }
 
@@ -146,7 +149,7 @@ func (h *DownloadHandler) StartDownloading(d Download) error {
         if err != nil {
             return err
         }
-        if !h.State.isPaused {
+        if (!h.State.isPaused) {
             fmt.Println("Download completed, starting to combine parts...")
             if err := h.combineParts(&d, contentLength); err != nil {
                 return fmt.Errorf("failed to combine parts: %v", err)
@@ -260,6 +263,17 @@ func (h *DownloadHandler) downloadWithRanges(download *Download, start int, end 
 }
 
 func (h *DownloadHandler) combineParts(download *Download, contentLength int) error {
+    // Check if parts exist before combining
+    partFiles, err := filepath.Glob(fmt.Sprintf("%s.part*", download.FilePath))
+    if err != nil {
+        return fmt.Errorf("failed to check part files: %v", err)
+    }
+    
+    if len(partFiles) == 0 {
+        // Parts already combined or don't exist
+        return nil
+    }
+
     fmt.Printf("Starting to combine %d parts\n", h.PartsCount)
     // the final file
     combinedFile, err := os.Create(download.FilePath)
@@ -314,6 +328,7 @@ type DownloadState struct {
     TotalBytes      int64
     mutex           sync.Mutex
     isPaused        bool
+    isCombined      bool    // Add this field to track if parts are already combined
 }
 
 func (h *DownloadHandler) Pause() error {
@@ -366,22 +381,44 @@ func (h *DownloadHandler) Resume(d Download) error {
 }
 
 func (h *DownloadHandler) resumingDownload(d Download, incompleteParts []chunk) error {
+    // Add completion check
+    completedCount := 0
+    h.State.mutex.Lock()
+    for _, completed := range h.State.Completed {
+        if completed {
+            completedCount++
+        }
+    }
+    h.State.mutex.Unlock()
+
+    // If already completed, just combine parts
+    if completedCount == h.PartsCount {
+        return h.combineParts(&d, int(h.State.TotalBytes))
+    }
+
     jobs := make(chan chunk, h.WORKERS_COUNT)
     errChan := make(chan error, h.WORKERS_COUNT)
     done := make(chan bool)
-    pauseAck := make(chan bool, h.WORKERS_COUNT)
-
+    pauseAck := make(chan bool, h.WORKERS_COUNT)  // Add this line
     var wg sync.WaitGroup
+
+    // Update worker call to include pauseAck
     for i := 0; i < h.WORKERS_COUNT; i++ {
         wg.Add(1)
         go h.worker(i, &d, jobs, errChan, pauseAck, &wg)
     }
 
-    // job distribution
+    // Job distribution
     go func() {
-        //handle incomplete parts
+        defer close(jobs)
+        
+        // First handle incomplete parts
         for _, part := range incompleteParts {
-            if !h.State.Completed[part.Start/h.CHUNK_SIZE] {
+            h.State.mutex.Lock()
+            isCompleted := h.State.Completed[part.Start/h.CHUNK_SIZE]
+            h.State.mutex.Unlock()
+            
+            if !isCompleted {
                 select {
                 case <-h.PauseChan:
                     h.State.mutex.Lock()
@@ -389,33 +426,48 @@ func (h *DownloadHandler) resumingDownload(d Download, incompleteParts []chunk) 
                     h.State.mutex.Unlock()
                     return
                 case jobs <- part:
-                    fmt.Printf("Resuming part %d (bytes %d-%d)\n", part.Start/h.CHUNK_SIZE, part.Start, part.End)
+                    fmt.Printf("Resuming part %d (bytes %d-%d)\n", 
+                        part.Start/h.CHUNK_SIZE, part.Start, part.End)
                 }
             }
         }
 
-        // it should continue from where we left off
+        // Continue with remaining parts
+        h.State.mutex.Lock()
         currentByte := h.State.CurrentByte
-        for currentByte < h.State.TotalBytes {
-            end := currentByte + int64(h.CHUNK_SIZE)
-            if end > h.State.TotalBytes {
-                end = h.State.TotalBytes
-            }
+        h.State.mutex.Unlock()
 
-            select {
-            case <-h.PauseChan:
-                h.State.mutex.Lock()
-                h.State.CurrentByte = currentByte
-                h.State.mutex.Unlock()
-                return
-            case jobs <- chunk{Start: int(currentByte), End: int(end - 1)}:
-                currentByte = end
+        for currentByte < h.State.TotalBytes {
+            partIndex := int(currentByte) / h.CHUNK_SIZE
+            
+            h.State.mutex.Lock()
+            isCompleted := h.State.Completed[partIndex]
+            h.State.mutex.Unlock()
+
+            if !isCompleted {
+                end := currentByte + int64(h.CHUNK_SIZE)
+                if end > h.State.TotalBytes {
+                    end = h.State.TotalBytes
+                }
+
+                chunk := chunk{Start: int(currentByte), End: int(end - 1)}
+                select {
+                case <-h.PauseChan:
+                    h.State.mutex.Lock()
+                    h.State.CurrentByte = currentByte
+                    h.State.IncompleteParts = append(h.State.IncompleteParts, chunk)
+                    h.State.mutex.Unlock()
+                    return
+                case jobs <- chunk:
+                    fmt.Printf("Downloading part %d (bytes %d-%d)\n", 
+                        partIndex, currentByte, end-1)
+                }
             }
+            currentByte += int64(h.CHUNK_SIZE)
         }
-        close(jobs)
     }()
 
-    // waiting for workers
+    // Wait and handle completion
     go func() {
         wg.Wait()
         if !h.State.isPaused {
@@ -424,7 +476,6 @@ func (h *DownloadHandler) resumingDownload(d Download, incompleteParts []chunk) 
         }
     }()
 
-    // error handeling
     select {
     case err := <-errChan:
         if err != nil {
@@ -440,7 +491,6 @@ func (h *DownloadHandler) resumingDownload(d Download, incompleteParts []chunk) 
     return nil
 }
 
-
 func NewDownloadHandler(client *http.Client, chunkSize int, workersCount int) *DownloadHandler {
     return &DownloadHandler{
         Client:        client,
@@ -455,6 +505,7 @@ func NewDownloadHandler(client *http.Client, chunkSize int, workersCount int) *D
             TotalBytes:      0,
             mutex:           sync.Mutex{},
             isPaused:        false,
+            isCombined:      false,
         },
     }
 }
