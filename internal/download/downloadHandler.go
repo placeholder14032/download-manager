@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -72,17 +71,17 @@ func (h *DownloadHandler) StartDownloading(d Download) error {
         return err
     }
     if !supportsRange {
-        return h.downloadWithoutRanges(d, contentLength)
+        return h.downloadWithoutRanges(d)
     }
 
     h.PartsCount = (contentLength + h.CHUNK_SIZE - 1) / h.CHUNK_SIZE
     h.initializeState(contentLength)
 
-    // we have 3 channels one for errors one for jobs (used to send download chunks to worker goroutines) and one for done and for error handling
+    // jobs: it's a channel used to send chunks to worker "task to download a specific piece (or "chunk")""
     jobs := make(chan chunk, h.WORKERS_COUNT)    // sends chunk information to workers
     errChan := make(chan error, h.WORKERS_COUNT)
-    done := make(chan bool, 1)
-    pauseAck := make(chan bool, h.WORKERS_COUNT) // Added to acknowledge worker pause completion
+    done := make(chan bool, 1) // used to notify if it's done or not
+    pauseAck := make(chan bool, h.WORKERS_COUNT) // channel to acknowledge worker pause completion
 
 
     var wg sync.WaitGroup
@@ -97,6 +96,7 @@ func (h *DownloadHandler) StartDownloading(d Download) error {
 
     return h.handleDownloadCompletion(&d, contentLength, errChan, done)
 }
+// start downloading function parts
 func (h *DownloadHandler) startWorkers(d *Download, wg *sync.WaitGroup, jobs <-chan chunk, errChan chan<- error, pauseAck chan<- bool) {
     for i := 0; i < h.WORKERS_COUNT; i++ {
         wg.Add(1)
@@ -105,6 +105,7 @@ func (h *DownloadHandler) startWorkers(d *Download, wg *sync.WaitGroup, jobs <-c
 }
 
 func (h *DownloadHandler) distributeJobs(jobs chan<- chunk, contentLength int) {
+    // 
     defer close(jobs)
     currentByte := h.State.CurrentByte
     for currentByte < int64(contentLength) {
@@ -154,7 +155,7 @@ func (h *DownloadHandler) handleDownloadCompletion(d *Download, contentLength in
         return h.combineParts(d, contentLength)
     }
 }
-
+// worker
 func (h *DownloadHandler) worker(id int, d *Download, jobs <-chan chunk, errChan chan<- error, pauseAck chan<- bool, wg *sync.WaitGroup) {
     defer wg.Done()
 
@@ -180,7 +181,7 @@ func (h *DownloadHandler) worker(id int, d *Download, jobs <-chan chunk, errChan
     }
 }
 
-func (h *DownloadHandler) downloadWithoutRanges(d Download, contentLength int) error {
+func (h *DownloadHandler) downloadWithoutRanges(d Download) error {
     req, err := http.NewRequest("GET", d.URL, nil)
     if err != nil {
         return fmt.Errorf("failed to create request: %v", err)
@@ -248,84 +249,8 @@ func (h *DownloadHandler) downloadWithRanges(download *Download, start int, end 
 }
 
 func (h *DownloadHandler) combineParts(download *Download, contentLength int) error {
-    if info, err := os.Stat(download.FilePath); err == nil {
-        if info.Size() == int64(contentLength) {
-            return nil 
-        }
-    }
-
-    partFiles, err := filepath.Glob(fmt.Sprintf("%s.part*", download.FilePath))
-    if err != nil {
-        return fmt.Errorf("failed to check part files: %v", err)
-    }
-    
-    if len(partFiles) == 0 {
-        if info, err := os.Stat(download.FilePath); err == nil && info.Size() == int64(contentLength) {
-            return nil
-        }
-        return fmt.Errorf("no part files found to combine")
-    }
-
-    partsMap := make(map[int]string)
-    for _, partFile := range partFiles {
-        var partNum int
-        _, err := fmt.Sscanf(filepath.Base(partFile), filepath.Base(download.FilePath)+".part%d", &partNum)
-        if err != nil {
-            continue
-        }
-        partsMap[partNum] = partFile
-    }
-
-    for i := 0; i < h.PartsCount; i++ {
-        if _, exists := partsMap[i]; !exists {
-            return fmt.Errorf("missing part file %d", i)
-        }
-    }
-
-    fmt.Printf("Starting to combine %d parts\n", h.PartsCount)
-    
-    combinedFile, err := os.Create(download.FilePath)
-    if err != nil {
-        return fmt.Errorf("failed to create final file: %v", err)
-    }
-    defer combinedFile.Close()
-
-    buffer := make([]byte, 32*1024)
-    completedParts := make([]string, 0, len(partFiles))
-    
-    for i := 0; i < h.PartsCount; i++ {
-        partFile, err := os.Open(partsMap[i])
-        if err != nil {
-            return fmt.Errorf("failed to open part %d: %v", i, err)
-        }
-
-        _, err = io.CopyBuffer(combinedFile, partFile, buffer)
-        partFile.Close()
-
-        if err != nil {
-            return fmt.Errorf("failed to copy part %d: %v", i, err)
-        }
-        completedParts = append(completedParts, partsMap[i])
-    }
-
-    info, err := os.Stat(download.FilePath)
-    if err != nil {
-        return fmt.Errorf("failed to verify final file: %v", err)
-    }
-    if info.Size() != int64(contentLength) {
-        return fmt.Errorf("final file size mismatch: got %d, want %d", info.Size(), contentLength)
-    }
-
-    // Single cleanup of ALL part files after successful combination
-    cleanupFiles, _ := filepath.Glob(fmt.Sprintf("%s.part*", download.FilePath))
-    for _, partFile := range cleanupFiles {
-        if err := os.Remove(partFile); err != nil {
-            fmt.Printf("Warning: failed to remove part file %s: %v\n", partFile, err)
-        }
-    }
-
-    fmt.Println("All parts combined successfully")
-    return nil
+    c :=  NewPartsCombiner()
+    return c.CombineParts(download.FilePath, contentLength, h.PartsCount)
 }
 
 func (h *DownloadHandler) IsAcceptRangeSupported(download Download) (bool, int, error) {
