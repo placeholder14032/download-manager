@@ -52,6 +52,19 @@ func NewDownloadHandler(client *http.Client, chunkSize int, workersCount int) *D
     }
 }
 
+func (h *DownloadHandler) initializeState(contentLength int) {
+    h.State = &DownloadState{
+        Completed:       make([]bool, h.PartsCount),
+        IncompleteParts: make([]chunk, 0),
+        CurrentByte:     0,
+        TotalBytes:      int64(contentLength),
+        mutex:           sync.Mutex{},
+        IsPaused:        false,
+        isCombined:      false,
+    }
+    h.PauseChan = make(chan struct{})
+}
+
 
 func (h *DownloadHandler) StartDownloading(d Download) error {
     supportsRange, contentLength, err := h.IsAcceptRangeSupported(d)
@@ -62,42 +75,15 @@ func (h *DownloadHandler) StartDownloading(d Download) error {
         return h.downloadWithoutRanges(d, contentLength)
     }
 
+    h.PartsCount = (contentLength + h.CHUNK_SIZE - 1) / h.CHUNK_SIZE
+    h.initializeState(contentLength)
+
     // we have 3 channels one for errors one for jobs (used to send download chunks to worker goroutines) and one for done and for error handling
     jobs := make(chan chunk, h.WORKERS_COUNT)    // sends chunk information to workers
     errChan := make(chan error, h.WORKERS_COUNT)
-    done := make(chan bool)
+    done := make(chan bool, 1)
     pauseAck := make(chan bool, h.WORKERS_COUNT) // Added to acknowledge worker pause completion
 
-    h.PartsCount = (contentLength + h.CHUNK_SIZE - 1) / h.CHUNK_SIZE
-    fmt.Printf("Starting download with %d parts\n", h.PartsCount)
-
-    // initializing state
-    if h.State == nil {
-        h.State = &DownloadState{
-            Completed:       make([]bool, h.PartsCount),
-            IncompleteParts: make([]chunk, 0),
-            CurrentByte:     0,
-            TotalBytes:      int64(contentLength),
-            mutex:           sync.Mutex{},
-            IsPaused:        false,
-            isCombined:      false,
-        }
-    } else {
-        h.State.mutex.Lock()
-
-        h.State.Completed = make([]bool, h.PartsCount)
-        h.State.IncompleteParts = make([]chunk, 0)
-        h.State.CurrentByte = 0
-        h.State.TotalBytes = int64(contentLength)
-        h.State.IsPaused = false
-        h.State.isCombined = false
-        
-        h.State.mutex.Unlock()
-    }
-
-    if h.PauseChan == nil {
-        h.PauseChan = make(chan struct{})
-    }
 
     var wg sync.WaitGroup
     for i := 0; i < h.WORKERS_COUNT; i++ {
@@ -105,72 +91,68 @@ func (h *DownloadHandler) StartDownloading(d Download) error {
         go h.worker(i, &d, jobs, errChan, pauseAck, &wg)
     }
 
-    // managing what work to give to workers
-    go func() {
-        currentByte := h.State.CurrentByte
-        for currentByte < int64(contentLength) {
-            h.State.mutex.Lock()
-            if h.State.IsPaused {
-                h.State.CurrentByte = currentByte
-                h.State.mutex.Unlock()
-                return
-            }
+    h.startWorkers(&d, &wg, jobs, errChan, pauseAck)
+    go h.distributeJobs(jobs, contentLength)
+    go h.waitForCompletion(&wg, errChan, done)
+
+    return h.handleDownloadCompletion(&d, contentLength, errChan, done)
+}
+func (h *DownloadHandler) startWorkers(d *Download, wg *sync.WaitGroup, jobs <-chan chunk, errChan chan<- error, pauseAck chan<- bool) {
+    for i := 0; i < h.WORKERS_COUNT; i++ {
+        wg.Add(1)
+        go h.worker(i, d, jobs, errChan, pauseAck, wg)
+    }
+}
+
+func (h *DownloadHandler) distributeJobs(jobs chan<- chunk, contentLength int) {
+    defer close(jobs)
+    currentByte := h.State.CurrentByte
+    for currentByte < int64(contentLength) {
+        h.State.mutex.Lock()
+        if h.State.IsPaused {
+            h.State.CurrentByte = currentByte
             h.State.mutex.Unlock()
-
-            end := currentByte + int64(h.CHUNK_SIZE)
-            if end > int64(contentLength) {
-                end = int64(contentLength)
-            }
-
-            select {
-            case <-h.PauseChan:
-                // we should pause the download so first we need to save the state -> mutex for avoiding race condition
-                h.State.mutex.Lock()
-                h.State.CurrentByte = currentByte
-                h.State.mutex.Unlock()
-                return
-            case jobs <- chunk{Start: int(currentByte), End: int(end - 1)}:
-                currentByte = end
-            }
+            return
         }
-        fmt.Printf("All %d parts scheduled for download\n", h.PartsCount)
-        close(jobs)
-    }()
+        h.State.mutex.Unlock()
 
-    // wait for workers and handle errors
-    go func() {
-        wg.Wait()
-        if !h.State.IsPaused {
-            close(errChan)
-            done <- true
+        end := currentByte + int64(h.CHUNK_SIZE)
+        if end > int64(contentLength) {
+            end = int64(contentLength)
         }
-    }()
 
-    // handle errors
+        select {
+        case <-h.PauseChan:
+            h.State.mutex.Lock()
+            h.State.CurrentByte = currentByte
+            h.State.mutex.Unlock()
+            return
+        case jobs <- chunk{Start: int(currentByte), End: int(end - 1)}:
+            currentByte = end
+        }
+    }
+}
+func (h *DownloadHandler) waitForCompletion(wg *sync.WaitGroup, errChan chan<- error, done chan<- bool) {
+    wg.Wait()
+    if !h.State.IsPaused {
+        close(errChan)
+        done <- true
+    }
+}
+
+func (h *DownloadHandler) handleDownloadCompletion(d *Download, contentLength int, errChan <-chan error, done <-chan bool) error {
     select {
     case err := <-errChan:
         if err != nil {
             return err
         }
-        if (!h.State.IsPaused) {
-            fmt.Println("Download completed, starting to combine parts...")
-            if err := h.combineParts(&d, contentLength); err != nil {
-                return fmt.Errorf("failed to combine parts: %v", err)
-            }
-            fmt.Println("Parts combined successfully")
-            return nil
+        if !h.State.IsPaused {
+            return h.combineParts(d, contentLength)
         }
         return nil
     case <-done:
-        // combine parts if the download was successful
-        fmt.Println("Download completed, starting to combine parts...")
-        if err := h.combineParts(&d, contentLength); err != nil {
-            return fmt.Errorf("failed to combine parts: %v", err)
-        }
-        fmt.Println("Parts combined successfully")
-        return nil
+        return h.combineParts(d, contentLength)
     }
-    return nil
 }
 
 func (h *DownloadHandler) worker(id int, d *Download, jobs <-chan chunk, errChan chan<- error, pauseAck chan<- bool, wg *sync.WaitGroup) {
