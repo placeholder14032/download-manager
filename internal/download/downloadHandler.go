@@ -20,41 +20,45 @@ type DownloadHandler struct {
     PauseChan     chan struct{} 
 }
 
+type DownloadState struct {
+    IncompleteParts []chunk
+    Completed       []bool
+    CurrentByte     int64
+    TotalBytes      int64
+    mutex           sync.Mutex
+    IsPaused        bool
+    isCombined      bool   
+}
+
 type chunk struct {
     Start int
     End   int
 }
 
-
-func (h *DownloadHandler) isAcceptRangeSupported(download Download) (bool, int) {
-    var url = download.URL
-    req, _ := http.NewRequest("HEAD", url, nil)
-    client := &http.Client{
-        Timeout: 5 * time.Second,
+func NewDownloadHandler(client *http.Client, chunkSize int, workersCount int) *DownloadHandler {
+    return &DownloadHandler{
+        Client:        client,
+        CHUNK_SIZE:    chunkSize,
+        WORKERS_COUNT: workersCount,
+        PauseChan:     make(chan struct{}),
+        State:         &DownloadState{
+            Completed:       make([]bool, 0),
+            IncompleteParts: make([]chunk, 0),
+            CurrentByte:     0,
+            TotalBytes:      0,
+            mutex:           sync.Mutex{},
+            isCombined:      false,
+        },
     }
-    resp, err := client.Do(req)
-    if err != nil {
-        fmt.Println(err)
-        return false, 0
-    }
-    defer resp.Body.Close()
-
-    if resp.StatusCode >= 400 {
-        fmt.Println("Cannot continue download, status code " + fmt.Sprint(resp.StatusCode))
-        return false, 0
-    }
-
-    acceptRanges := strings.ToLower(resp.Header.Get("Accept-Ranges"))
-    if acceptRanges == "" || acceptRanges == "none" {
-        return false, int(resp.ContentLength)
-    }
-
-    return true, int(resp.ContentLength)
 }
 
+
 func (h *DownloadHandler) StartDownloading(d Download) error {
-    supportsRange, contentLength := h.isAcceptRangeSupported(d)
-    if (!supportsRange) {
+    supportsRange, contentLength, err := h.IsAcceptRangeSupported(d)
+    if err != nil {
+        return err
+    }
+    if !supportsRange {
         return h.downloadWithoutRanges(d, contentLength)
     }
 
@@ -342,15 +346,30 @@ func (h *DownloadHandler) combineParts(download *Download, contentLength int) er
     return nil
 }
 
-type DownloadState struct {
-    IncompleteParts []chunk
-    Completed       []bool
-    CurrentByte     int64
-    TotalBytes      int64
-    mutex           sync.Mutex
-    IsPaused        bool
-    isCombined      bool   
+func (h *DownloadHandler) IsAcceptRangeSupported(download Download) (bool, int, error) {
+    req, err := http.NewRequest("HEAD", download.URL, nil)
+    if err != nil {
+        return false, 0, fmt.Errorf("failed to create HEAD request: %v", err)
+    }
+
+    client := &http.Client{Timeout: 5 * time.Second}
+    resp, err := client.Do(req)
+    if err != nil {
+        return false, 0, fmt.Errorf("HEAD request failed: %v", err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode >= 400 {
+        return false, 0, fmt.Errorf("server returned status: %d", resp.StatusCode)
+    }
+
+    acceptRanges := strings.ToLower(resp.Header.Get("Accept-Ranges"))
+    if acceptRanges == "" || acceptRanges == "none" {
+        return false, int(resp.ContentLength), nil
+    }
+    return true, int(resp.ContentLength), nil
 }
+
 
 func (h *DownloadHandler) Pause() error {
     if h.State == nil {
@@ -514,19 +533,3 @@ func (h *DownloadHandler) resumingDownload(d Download, incompleteParts []chunk) 
     return nil
 }
 
-func NewDownloadHandler(client *http.Client, chunkSize int, workersCount int) *DownloadHandler {
-    return &DownloadHandler{
-        Client:        client,
-        CHUNK_SIZE:    chunkSize,
-        WORKERS_COUNT: workersCount,
-        PauseChan:     make(chan struct{}),
-        State:         &DownloadState{
-            Completed:       make([]bool, 0),
-            IncompleteParts: make([]chunk, 0),
-            CurrentByte:     0,
-            TotalBytes:      0,
-            mutex:           sync.Mutex{},
-            isCombined:      false,
-        },
-    }
-}
