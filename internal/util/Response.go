@@ -22,3 +22,7 @@ type StaticDownloadList struct {
 	Downloads []DownloadBody
 }
 
+type FailureMessage struct {
+	Message string
+}
+
