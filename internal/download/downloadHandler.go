@@ -105,10 +105,11 @@ func (h *DownloadHandler) startWorkers(d *Download, wg *sync.WaitGroup, jobs <-c
 }
 
 func (h *DownloadHandler) distributeJobs(jobs chan<- chunk, contentLength int) {
-    // 
     defer close(jobs)
     currentByte := h.State.CurrentByte
+
     for currentByte < int64(contentLength) {
+        // Check pause state first
         h.State.Mutex.Lock()
         if h.State.IsPaused {
             h.State.CurrentByte = currentByte
@@ -122,17 +123,23 @@ func (h *DownloadHandler) distributeJobs(jobs chan<- chunk, contentLength int) {
             end = int64(contentLength)
         }
 
+        chunk := chunk{Start: int(currentByte), End: int(end - 1)}
+        
         select {
         case <-h.PauseChan:
             h.State.Mutex.Lock()
             h.State.CurrentByte = currentByte
+            h.State.IncompleteParts = append(h.State.IncompleteParts, chunk)
             h.State.Mutex.Unlock()
+            fmt.Printf("Distributor paused at byte %d\n", currentByte)
             return
-        case jobs <- chunk{Start: int(currentByte), End: int(end - 1)}:
+        case jobs <- chunk:
             currentByte = end
+            fmt.Printf("Dispatched chunk %d-%d\n", chunk.Start, chunk.End)
         }
     }
 }
+
 func (h *DownloadHandler) waitForCompletion(wg *sync.WaitGroup, errChan chan<- error, done chan<- bool) {
     wg.Wait()
     if !h.State.IsPaused {
@@ -160,13 +167,23 @@ func (h *DownloadHandler) worker(id int, d *Download, jobs <-chan chunk, errChan
     defer wg.Done()
 
     for chunk := range jobs {
+        // Check pause state before starting new chunk
+        h.State.Mutex.Lock()
+        if h.State.IsPaused {
+            h.State.IncompleteParts = append(h.State.IncompleteParts, chunk)
+            h.State.Mutex.Unlock()
+            fmt.Printf("Worker %d stopped due to pause state\n", id)
+            pauseAck <- true
+            return
+        }
+        h.State.Mutex.Unlock()
+
         select {
         case <-h.PauseChan:
-            // we should append the incomplete part to the state, we need Mutex to avoid race condition
             h.State.Mutex.Lock()
             h.State.IncompleteParts = append(h.State.IncompleteParts, chunk)
             h.State.Mutex.Unlock()
-            fmt.Printf("Worker %d paused, saving incomplete chunk %d-%d\n", id, chunk.Start, chunk.End)
+            fmt.Printf("Worker %d paused at chunk %d-%d\n", id, chunk.Start, chunk.End)
             pauseAck <- true
             return
         default:
