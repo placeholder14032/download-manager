@@ -5,7 +5,6 @@ import (
 	"github.com/rivo/tview"
 )
 
-var lastPressedKeyDropDown tcell.Key
 var StatePanel string
 var newDownloadFlex *tview.Flex
 var urlDownload, nameDownload, queueDownload string
@@ -19,7 +18,7 @@ func DrawNewDownloadPage(app *tview.Application) {
 	queueDropDown := tview.NewDropDown().SetLabel("Queue: ").
 		SetOptions([]string{"Queue1", "Queue2", "Queue3"}, nil).
 		SetCurrentOption(0)
-
+	isQueueDropDownOpen := false
 	queueDropDown.SetSelectedFunc(func(text string, index int) {
 		app.Stop()
 	})
@@ -35,6 +34,8 @@ func DrawNewDownloadPage(app *tview.Application) {
 			urlDownload = urlDownloadInput.GetText()
 			currentStep++
 			app.SetFocus(queueDropDown)
+			queueDropDown.SetFieldBackgroundColor(tcell.ColorRed)
+			isQueueDropDownOpen = true
 		}
 	})
 
@@ -53,8 +54,8 @@ func DrawNewDownloadPage(app *tview.Application) {
 				currentStep--
 				if currentStep < maxStep-1 {
 					app.SetFocus(inputFields[currentStep])
-				} else {
-					app.SetFocus(queueDropDown)
+					queueDropDown.SetFieldBackgroundColor(tcell.ColorBlue)
+					isQueueDropDownOpen = false
 				}
 				return nil
 			}
@@ -65,11 +66,21 @@ func DrawNewDownloadPage(app *tview.Application) {
 					app.SetFocus(inputFields[currentStep])
 				} else {
 					app.SetFocus(queueDropDown)
+					queueDropDown.SetFieldBackgroundColor(tcell.ColorRed)
+					isQueueDropDownOpen = true
 				}
 				return nil
 			}
-		case tcell.KeyF1:
-			return nil
+		}
+		return event
+	})
+
+	queueDropDown.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEnter, tcell.KeyDown:
+			if !isQueueDropDownOpen {
+				return nil
+			}
 		}
 		return event
 	})
