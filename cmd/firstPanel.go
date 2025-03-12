@@ -1,72 +1,79 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
-var url, name string
+var lastPressedKeyDropDown tcell.Key
+var StatePanel string
+var newDownloadFlex *tview.Flex
+var urlDownload, nameDownload, queueDownload string
 
-func DrawFirstStage(app *tview.Application) {
-	var firstPanelFlex = tview.NewFlex()
+func DrawNewDownloadPage(app *tview.Application) {
+	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | Esc to go back | f[1,2,3] to chnage tabs | Ctrl+q to quit")
+	var currentStep, maxStep int = 0, 3
+	nameDownloadInput := tview.NewInputField().SetLabel("Name: ")
+	urlDownloadInput := tview.NewInputField().SetLabel("Url: ")
+	var inputFields []*tview.InputField = []*tview.InputField{nameDownloadInput, urlDownloadInput}
+	queueDropDown := tview.NewDropDown().SetLabel("Queue: ").
+		SetOptions([]string{"Queue1", "Queue2", "Queue3"}, nil).
+		SetCurrentOption(0)
 
-	var urlInputField = tview.NewInputField()
-
-	urlInputField.SetDoneFunc(func(key tcell.Key) {
+	queueDropDown.SetSelectedFunc(func(text string, index int) {
+		app.Stop()
+	})
+	nameDownloadInput.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
-			url = urlInputField.GetText()
-			drawSecondStage(app)
-			return
+			nameDownload = nameDownloadInput.GetText()
+			currentStep++
+			app.SetFocus(inputFields[currentStep])
 		}
-	}).SetLabel("URL: ")
-
-	firstPanelFlex = tview.NewFlex().
-		SetDirection(tview.FlexRow).
-		AddItem(urlInputField, 1, 0, true)
-
-	app.SetRoot(firstPanelFlex, true).SetFocus(urlInputField)
-}
-
-func drawSecondStage(app *tview.Application) {
-	var secondPanelFlex = tview.NewFlex()
-
-	var nameInputField = tview.NewInputField()
-	var urlTextField = tview.NewTextView().SetText("> URL: " + url)
-
-	nameInputField.SetDoneFunc(func(key tcell.Key) {
+	})
+	urlDownloadInput.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
-			name = nameInputField.GetText()
-			drawThirdStage(app)
-			return
+			urlDownload = urlDownloadInput.GetText()
+			currentStep++
+			app.SetFocus(queueDropDown)
 		}
-	}).SetLabel("NAME: ")
+	})
 
-	secondPanelFlex = tview.NewFlex().
+	newDownloadFlex = tview.NewFlex().
 		SetDirection(tview.FlexRow).
-		AddItem(urlTextField, 1, 0, false).
-		AddItem(nameInputField, 1, 0, true)
+		AddItem(inputFields[0], 1, 0, true).
+		AddItem(inputFields[1], 1, 0, true).
+		AddItem(queueDropDown, 1, 0, true).
+		AddItem(nil, 0, 1, false).
+		AddItem(footer, 1, 0, false)
 
-	app.SetRoot(secondPanelFlex, true).SetFocus(nameInputField)
-}
+	newDownloadFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyUp:
+			if currentStep > 0 {
+				currentStep--
+				if currentStep < maxStep-1 {
+					app.SetFocus(inputFields[currentStep])
+				} else {
+					app.SetFocus(queueDropDown)
+				}
+				return nil
+			}
+		case tcell.KeyDown:
+			if currentStep < maxStep-1 {
+				currentStep++
+				if currentStep < maxStep-1 {
+					app.SetFocus(inputFields[currentStep])
+				} else {
+					app.SetFocus(queueDropDown)
+				}
+				return nil
+			}
+		case tcell.KeyF1:
+			return nil
+		}
+		return event
+	})
 
-func drawThirdStage(app *tview.Application) {
-	var secondPanelFlex = tview.NewFlex()
-
-	var queueDropDown = tview.NewDropDown().
-		SetLabel("QUEUE: ").
-		SetOptions([]string{"Queue1", "Queue2", "Queue3"}, func(text string, index int) {
-			defer fmt.Println(url, name, text)
-			app.Stop()
-		})
-	var urlTextField, nameTextField = tview.NewTextView().SetText("> URL: " + url), tview.NewTextView().SetText("> NAME: " + name)
-
-	secondPanelFlex = tview.NewFlex().
-		SetDirection(tview.FlexRow).
-		AddItem(urlTextField, 1, 0, false).
-		AddItem(nameTextField, 1, 0, false).
-		AddItem(queueDropDown, 1, 0, true)
-
-	app.SetRoot(secondPanelFlex, true).SetFocus(queueDropDown)
+	app.SetRoot(newDownloadFlex, true).SetFocus(inputFields[0])
+	StatePanel = "first"
 }
