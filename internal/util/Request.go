@@ -1,7 +1,5 @@
 package util
 
-import "github.com/placeholder14032/download-manager/internal/queue"
-
 type RequestType int
 
 const (
@@ -14,7 +12,7 @@ const (
 	// queue ones: these also have empty body
 	AddQueue
 	DeleteQueue
-	Edit // will take parameters inside the body
+	EditQueue // will take parameters inside the body
 	// possible parameters are
 	// TimeRange
 	// Directory
