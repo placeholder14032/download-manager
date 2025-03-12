@@ -11,6 +11,6 @@ func main() {
 	var reqs = make(chan util.Request)
 	var resps = make(chan util.Response)
 	var manager = manager.Manager{}
-	go manager.Start()
+	go manager.Start(reqs, resps)
 	go ui.Main(reqs, resps)
 }
