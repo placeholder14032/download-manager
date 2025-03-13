@@ -74,7 +74,7 @@ func (h *DownloadHandler) handleDownloadCompletion(d *Download, contentLength in
         return h.combineParts(d, contentLength)
     }
 }
-// worker
+
 func (h *DownloadHandler) worker(id int, d *Download, jobs <-chan chunk, errChan chan<- error, pauseAck chan<- bool, wg *sync.WaitGroup) {
     defer wg.Done()
 
