@@ -32,7 +32,7 @@ func (m *Manager) answerAddDL(r util.Request) {
 func (m *Manager) answerPauseDL(r util.Request) {
 	body, ok := r.Body.(util.BodyModDownload)
 	if !ok {
-		m.answerBadRequest(fmt.Sprintf(BAD_REQ_BODY_TYPE, "Mod Download", "BodyAddDownload"))
+		m.answerBadRequest(fmt.Sprintf(BAD_REQ_BODY_TYPE, "Pause Download", "BodyAddDownload"))
 		return
 	}
 	err := m.pauseDownload(body.ID)
@@ -42,10 +42,20 @@ func (m *Manager) answerPauseDL(r util.Request) {
 func (m *Manager) answerResumeDL(r util.Request) {
 	body, ok := r.Body.(util.BodyModDownload)
 	if !ok {
-		m.answerBadRequest(fmt.Sprintf(BAD_REQ_BODY_TYPE, "Mod Download", "BodyAddDownload"))
+		m.answerBadRequest(fmt.Sprintf(BAD_REQ_BODY_TYPE, "Resume Download", "BodyAddDownload"))
 		return
 	}
 	err := m.resumeDownload(body.ID)
+	m.answerERR(err)
+}
+
+func (m *Manager) answerRetryDL(r util.Request) {
+	body, ok := r.Body.(util.BodyModDownload)
+	if !ok {
+		m.answerBadRequest(fmt.Sprintf(BAD_REQ_BODY_TYPE, "Retry Download", "BodyAddDownload"))
+		return
+	}
+	err := m.retryDownload(body.ID)
 	m.answerERR(err)
 }
 
@@ -63,6 +73,7 @@ func (m *Manager) answerRequest(r util.Request) {
 	case util.ResumeDownload:
 		m.answerResumeDL(r)
 	case util.RetryDownload:
+		m.answerRetryDL(r)
 	//
 	case util.AddQueue:
 	case util.CancelDownload:

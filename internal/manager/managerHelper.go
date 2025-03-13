@@ -96,8 +96,18 @@ func (m *Manager) resumeDownload(dlID int64) error {
 }
 
 func (m *Manager) retryDownload(dlID int64) error {
-	// TODO
-	return nil
+	i, j := m.findDownloadQueueIndex(dlID)
+	if i == -1 || j == -1 {
+		return fmt.Errorf(CANT_FIND_DL_ERROR, dlID)
+	}
+	dl := &m.qs[i].DownloadLists[j] // not a copy
+	if dl.Status != download.Cancelled && dl.Status != download.Failed {
+		return fmt.Errorf(DOWNLOAD_IS_NOT_IN_STATE, dlID, "Cancelled or Failed")
+	}
+	dl.Status = download.Retrying // temporary status to stop other threads from meddling with this one even though there might not be any other threads probably
+	m.getHandler(dlID).Pause() // effectively this should kill all the workers because
+	m.hs[dlID] = createDefaultHandler()
+	return m.hs[dlID].StartDownloading(m.qs[i].DownloadLists[j]) // will return error or nil
 }
 
 func (m *Manager) answerBadRequest(msg string) {
