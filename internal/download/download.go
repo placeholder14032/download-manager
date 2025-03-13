@@ -28,8 +28,5 @@ func (download *Download) Init (){
 	}
 	download.Progress = 0
 	download.RetryCount = 0
-	download.Status = NotStarted
-
-
 }
 

@@ -11,5 +11,4 @@ const (
 	Retrying
 	Failed
 	Pending
-	NotStarted
 )
