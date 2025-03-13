@@ -1,5 +1,8 @@
 package download
 
+import(
+)
+
 type Download struct {
 	ID           int64
 	URL          string
@@ -10,4 +13,3 @@ type Download struct {
 	RetryCount   int64
 	MaxRetries   int64
 }
-
