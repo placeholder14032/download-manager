@@ -6,18 +6,18 @@ import (
 )
 
 func (h *DownloadHandler) Pause() error {
-    if h.State == nil {
-        return fmt.Errorf("download not initialized")
+    if h.Download.State == nil {
+        return fmt.Errorf("Download not initialized")
     }
 
-    h.State.Mutex.Lock()
-    defer h.State.Mutex.Unlock()
+    h.Download.State.Mutex.Lock()
+    defer h.Download.State.Mutex.Unlock()
 
-    if h.State.IsPaused {
-        return fmt.Errorf("download is already paused")
+    if h.Download.State.IsPaused {
+        return fmt.Errorf("Download is already paused")
     }
 
-    h.State.IsPaused = true
+    h.Download.State.IsPaused = true
     
     if h.PauseChan != nil {
         close(h.PauseChan)
@@ -28,45 +28,45 @@ func (h *DownloadHandler) Pause() error {
 }
 
 func (h *DownloadHandler) Resume(d Download) error {
-    if h.State == nil {
-        return fmt.Errorf("download not initialized")
+    if h.Download.State == nil {
+        return fmt.Errorf("Download not initialized")
     }
 
-    h.State.Mutex.Lock()
-    if !h.State.IsPaused {
-        h.State.Mutex.Unlock()
-        return fmt.Errorf("download is not paused")
+    h.Download.State.Mutex.Lock()
+    if !h.Download.State.IsPaused {
+        h.Download.State.Mutex.Unlock()
+        return fmt.Errorf("Download is not paused")
     }
 
-    h.State.IsPaused = false
+    h.Download.State.IsPaused = false
     h.PauseChan = make(chan struct{})
     incompleteParts := h.prepareResume()
-    h.State.Mutex.Unlock()
+    h.Download.State.Mutex.Unlock()
 
     return h.resumeDownload(d, incompleteParts)
 }
 
 func (h *DownloadHandler) prepareResume() []chunk {
-    incompleteParts := make([]chunk, len(h.State.IncompleteParts))
-    copy(incompleteParts, h.State.IncompleteParts)
-    h.State.IncompleteParts = make([]chunk, 0)
+    incompleteParts := make([]chunk, len(h.Download.State.IncompleteParts))
+    copy(incompleteParts, h.Download.State.IncompleteParts)
+    h.Download.State.IncompleteParts = make([]chunk, 0)
     return incompleteParts
 }
 
 func (h *DownloadHandler) resumeDownload(d Download, incompleteParts []chunk) error {
     if h.isDownloadComplete() {
-        return h.combineParts(&d, int(h.State.TotalBytes))
+        return h.combineParts(int(h.Download.State.TotalBytes))
     }
 
     return h.resumeDownloadWorkers(d, incompleteParts) 
 }
 
 func (h *DownloadHandler) isDownloadComplete() bool {
-    h.State.Mutex.Lock()
-    defer h.State.Mutex.Unlock()
+    h.Download.State.Mutex.Lock()
+    defer h.Download.State.Mutex.Unlock()
     
     completedCount := 0
-    for _, completed := range h.State.Completed {
+    for _, completed := range h.Download.State.Completed {
         if completed {
             completedCount++
         }
@@ -75,8 +75,8 @@ func (h *DownloadHandler) isDownloadComplete() bool {
 }
 
 func (h *DownloadHandler) resumeDownloadWorkers(d Download, incompleteParts []chunk) error {
-    // Kindda the same logic as downloadHandler startinfDownload
-    //  3 channels like downloadHandler
+    // Kindda the same logic as DownloadHandler startinfDownload
+    //  3 channels like DownloadHandler
     jobs := make(chan chunk, h.WORKERS_COUNT)
     errChan := make(chan error, h.WORKERS_COUNT)
     done := make(chan bool)
@@ -86,7 +86,7 @@ func (h *DownloadHandler) resumeDownloadWorkers(d Download, incompleteParts []ch
     // starting workers
     for i := 0; i < h.WORKERS_COUNT; i++ {
         wg.Add(1)
-        go h.worker(i, &d, jobs, errChan, pauseAck, &wg)
+        go h.worker(i, jobs, errChan, pauseAck, &wg)
     }
 
     // Distribute jobs like startingDownload
@@ -110,11 +110,11 @@ func (h *DownloadHandler) distributeResumeJobs(jobs chan chunk, incompleteParts 
     }
 
     // Handle remaining parts
-    h.State.Mutex.Lock()
-    currentByte := h.State.CurrentByte
-    h.State.Mutex.Unlock()
+    h.Download.State.Mutex.Lock()
+    currentByte := h.Download.State.CurrentByte
+    h.Download.State.Mutex.Unlock()
 
-    for currentByte < h.State.TotalBytes {
+    for currentByte < h.Download.State.TotalBytes {
         partIndex := int(currentByte) / h.CHUNK_SIZE
         if !h.isPartCompleted(partIndex) {
             chunk := h.createChunk(currentByte)
@@ -127,15 +127,15 @@ func (h *DownloadHandler) distributeResumeJobs(jobs chan chunk, incompleteParts 
 }
 
 func (h *DownloadHandler) isPartCompleted(partIndex int) bool {
-    h.State.Mutex.Lock()
-    defer h.State.Mutex.Unlock()
-    return h.State.Completed[partIndex]
+    h.Download.State.Mutex.Lock()
+    defer h.Download.State.Mutex.Unlock()
+    return h.Download.State.Completed[partIndex]
 }
 
 func (h *DownloadHandler) createChunk(currentByte int64) chunk {
     end := currentByte + int64(h.CHUNK_SIZE)
-    if end > h.State.TotalBytes {
-        end = h.State.TotalBytes
+    if end > h.Download.State.TotalBytes {
+        end = h.Download.State.TotalBytes
     }
     return chunk{Start: int(currentByte), End: int(end - 1)}
 }
@@ -144,9 +144,9 @@ func (h *DownloadHandler) sendJob(jobs chan chunk, part chunk) bool {
     partIndex := part.Start / h.CHUNK_SIZE
     select {
     case <-h.PauseChan:
-        h.State.Mutex.Lock()
-        h.State.IncompleteParts = append(h.State.IncompleteParts, part)
-        h.State.Mutex.Unlock()
+        h.Download.State.Mutex.Lock()
+        h.Download.State.IncompleteParts = append(h.Download.State.IncompleteParts, part)
+        h.Download.State.Mutex.Unlock()
         return false
     case jobs <- part:
         fmt.Printf("Downloading part %d (bytes %d-%d)\n", 
@@ -157,7 +157,7 @@ func (h *DownloadHandler) sendJob(jobs chan chunk, part chunk) bool {
 
 func (h *DownloadHandler) handleCompletion(errChan chan error, done chan bool, wg *sync.WaitGroup) {
     wg.Wait()
-    if !h.State.IsPaused {
+    if !h.Download.State.IsPaused {
         close(errChan)
         done <- true
     }
@@ -169,11 +169,11 @@ func (h *DownloadHandler) waitForDownloadResult(d Download, errChan chan error, 
         if err != nil {
             return err
         }
-        if !h.State.IsPaused {
-            return h.combineParts(&d, int(h.State.TotalBytes))
+        if !h.Download.State.IsPaused {
+            return h.combineParts(int(h.Download.State.TotalBytes))
         }
     case <-done:
-        return h.combineParts(&d, int(h.State.TotalBytes))
+        return h.combineParts(int(h.Download.State.TotalBytes))
     }
     return nil
 }

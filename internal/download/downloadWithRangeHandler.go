@@ -8,27 +8,27 @@ import (
 	"time"
 )
 
-// start downloading function parts
-func (h *DownloadHandler) startWorkers(d *Download, wg *sync.WaitGroup, jobs <-chan chunk, errChan chan<- error, pauseAck chan<- bool) {
+// start Downloading function parts
+func (h *DownloadHandler) startWorkers( wg *sync.WaitGroup, jobs <-chan chunk, errChan chan<- error, pauseAck chan<- bool) {
     for i := 0; i < h.WORKERS_COUNT; i++ {
         wg.Add(1)
-        go h.worker(i, d, jobs, errChan, pauseAck, wg)
+        go h.worker(i, jobs, errChan, pauseAck, wg)
     }
 }
 
 func (h *DownloadHandler) distributeJobs(jobs chan<- chunk, contentLength int) {
     defer close(jobs)
-    currentByte := h.State.CurrentByte
+    currentByte := h.Download.State.CurrentByte
 
     for currentByte < int64(contentLength) {
         // Check pause state first
-        h.State.Mutex.Lock()
-        if h.State.IsPaused {
-            h.State.CurrentByte = currentByte
-            h.State.Mutex.Unlock()
+        h.Download.State.Mutex.Lock()
+        if h.Download.State.IsPaused {
+            h.Download.State.CurrentByte = currentByte
+            h.Download.State.Mutex.Unlock()
             return
         }
-        h.State.Mutex.Unlock()
+        h.Download.State.Mutex.Unlock()
 
         end := currentByte + int64(h.CHUNK_SIZE)
         if end > int64(contentLength) {
@@ -39,10 +39,10 @@ func (h *DownloadHandler) distributeJobs(jobs chan<- chunk, contentLength int) {
         
         select {
         case <-h.PauseChan:
-            h.State.Mutex.Lock()
-            h.State.CurrentByte = currentByte
-            h.State.IncompleteParts = append(h.State.IncompleteParts, chunk)
-            h.State.Mutex.Unlock()
+            h.Download.State.Mutex.Lock()
+            h.Download.State.CurrentByte = currentByte
+            h.Download.State.IncompleteParts = append(h.Download.State.IncompleteParts, chunk)
+            h.Download.State.Mutex.Unlock()
             fmt.Printf("Distributor paused at byte %d\n", currentByte)
             return
         case jobs <- chunk:
@@ -54,7 +54,7 @@ func (h *DownloadHandler) distributeJobs(jobs chan<- chunk, contentLength int) {
 
 func (h *DownloadHandler) waitForCompletion(wg *sync.WaitGroup, errChan chan<- error, done chan<- bool) {
     wg.Wait()
-    if !h.State.IsPaused {
+    if !h.Download.State.IsPaused {
         close(errChan)
         done <- true
     }
@@ -66,57 +66,57 @@ func (h *DownloadHandler) handleDownloadCompletion(d *Download, contentLength in
         if err != nil {
             return err
         }
-        if !h.State.IsPaused {
-            return h.combineParts(d, contentLength)
+        if !h.Download.State.IsPaused {
+            return h.combineParts( contentLength)
         }
         return nil
     case <-done:
-        return h.combineParts(d, contentLength)
+        return h.combineParts( contentLength)
     }
 }
 
-func (h *DownloadHandler) worker(id int, d *Download, jobs <-chan chunk, errChan chan<- error, pauseAck chan<- bool, wg *sync.WaitGroup) {
+func (h *DownloadHandler) worker(id int, jobs <-chan chunk, errChan chan<- error, pauseAck chan<- bool, wg *sync.WaitGroup) {
     defer wg.Done()
 
     for chunk := range jobs {
         // Check pause state before starting new chunk
-        h.State.Mutex.Lock()
-        if h.State.IsPaused {
-            h.State.IncompleteParts = append(h.State.IncompleteParts, chunk)
-            h.State.Mutex.Unlock()
+        h.Download.State.Mutex.Lock()
+        if h.Download.State.IsPaused {
+            h.Download.State.IncompleteParts = append(h.Download.State.IncompleteParts, chunk)
+            h.Download.State.Mutex.Unlock()
             fmt.Printf("Worker %d stopped due to pause state\n", id)
             pauseAck <- true
             return
         }
-        h.State.Mutex.Unlock()
+        h.Download.State.Mutex.Unlock()
 
         select {
         case <-h.PauseChan:
-            h.State.Mutex.Lock()
-            h.State.IncompleteParts = append(h.State.IncompleteParts, chunk)
-            h.State.Mutex.Unlock()
+            h.Download.State.Mutex.Lock()
+            h.Download.State.IncompleteParts = append(h.Download.State.IncompleteParts, chunk)
+            h.Download.State.Mutex.Unlock()
             fmt.Printf("Worker %d paused at chunk %d-%d\n", id, chunk.Start, chunk.End)
             pauseAck <- true
             return
         default:
-            if err := h.downloadWithRanges(d, chunk.Start, chunk.End); err != nil {
+            if err := h.downloadWithRanges( chunk.Start, chunk.End); err != nil {
                 errChan <- fmt.Errorf("worker %d failed: %v", id, err)
                 return
             }
-            h.State.Mutex.Lock()
-            h.State.Completed[chunk.Start/h.CHUNK_SIZE] = true
-            h.State.Mutex.Unlock()
+            h.Download.State.Mutex.Lock()
+            h.Download.State.Completed[chunk.Start/h.CHUNK_SIZE] = true
+            h.Download.State.Mutex.Unlock()
         }
     }
 }
 
-func (h *DownloadHandler) combineParts(download *Download, contentLength int) error {
+func (h *DownloadHandler) combineParts( contentLength int) error {
     c :=  NewPartsCombiner()
-    return c.CombineParts(download.FilePath, contentLength, h.PartsCount)
+    return c.CombineParts(h.Download.FilePath, contentLength, h.PartsCount)
 }
 
-func (h *DownloadHandler) IsAcceptRangeSupported(download Download) (bool, int, error) {
-    req, err := http.NewRequest("HEAD", download.URL, nil)
+func (h *DownloadHandler) IsAcceptRangeSupported() (bool, int, error) {
+    req, err := http.NewRequest("HEAD", h.Download.URL, nil)
     if err != nil {
         return false, 0, fmt.Errorf("failed to create HEAD request: %v", err)
     }

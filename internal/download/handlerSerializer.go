@@ -19,19 +19,19 @@ type SavedDownloadState struct{
 	IncompleteParts []int
 }
 
-func (h *DownloadHandler) Export(download *Download) (*SavedDownloadState, error){
-		h.State.Mutex.Lock()
-		defer h.State.Mutex.Unlock()
+func (h *DownloadHandler) Export() (*SavedDownloadState, error){
+		h.Download.State.Mutex.Lock()
+		defer h.Download.State.Mutex.Unlock()
 
 		savedState := &SavedDownloadState{
-			URL: download.URL,
-			FilePath: download.FilePath,
+			URL: h.Download.URL,
+			FilePath: h.Download.FilePath,
 			CHUNK_SIZE: h.CHUNK_SIZE,
-			CompletedParts: h.State.Completed,
-			CurrByte: h.State.CurrentByte,
-			TotalBytes: h.State.TotalBytes,
+			CompletedParts: h.Download.State.Completed,
+			CurrByte: h.Download.State.CurrentByte,
+			TotalBytes: h.Download.State.TotalBytes,
 			PartsCount: h.PartsCount,
-			IsPaused: h.State.IsPaused,
+			IsPaused: h.Download.State.IsPaused,
 			IncompleteParts: make([]int, 0),
 		}
 
@@ -63,7 +63,7 @@ func Import(state *SavedDownloadState, client *http.Client)  (*DownloadHandler, 
         incompleteParts = append(incompleteParts, chunk{Start: start, End: end})
     }
 
-	handler.State = &DownloadState{
+	handler.Download.State = &DownloadState{
         Completed:       state.CompletedParts,
         IncompleteParts: incompleteParts,
         CurrentByte:     state.CurrByte,
@@ -77,8 +77,8 @@ func Import(state *SavedDownloadState, client *http.Client)  (*DownloadHandler, 
 }
 
 // same as save
-func (h *DownloadHandler) Serialize(download *Download) ([]byte, error){
-	savedState, err := h.Export(download)
+func (h *DownloadHandler) Serialize(Download *Download) ([]byte, error){
+	savedState, err := h.Export()
 	if err != nil{
 		return nil, fmt.Errorf("failed to export download state: %v", err)
 	}
@@ -94,7 +94,7 @@ func (h *DownloadHandler) Serialize(download *Download) ([]byte, error){
 
 func SerializeHandler(handler *DownloadHandler, download *Download) ([]byte, error) {
 	// exporting handler -> same as creating a state re port
-    savedState, err := handler.Export(download)
+    savedState, err := handler.Export()
     if err != nil {
         return nil, fmt.Errorf("failed to export handler state: %v", err)
     }

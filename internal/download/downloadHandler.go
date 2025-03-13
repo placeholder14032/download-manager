@@ -13,8 +13,9 @@ type DownloadHandler struct {
     CHUNK_SIZE    int
     WORKERS_COUNT int
     PartsCount    int
-    State         *DownloadState
     PauseChan     chan struct{} 
+
+    Download        *Download
 }
 
 type DownloadState struct {
@@ -33,47 +34,34 @@ type chunk struct {
 }
 
 
-func  NewDownloadHandler(client *http.Client, chunkSize int, workersCount int) *DownloadHandler {
+func   (download *Download)  NewDownloadHandler(client *http.Client, chunkSize int, workersCount int) *DownloadHandler {
+    download.Init()
     return &DownloadHandler{
         Client:        client,
         CHUNK_SIZE:    chunkSize,
         WORKERS_COUNT: workersCount,
         PauseChan:     make(chan struct{}),
-        State:         &DownloadState{
-            Completed:       make([]bool, 0),
-            IncompleteParts: make([]chunk, 0),
-            CurrentByte:     0,
-            TotalBytes:      0,
-            Mutex:           sync.Mutex{},
-            isCombined:      false,
-        },
+        Download: download,
     }
 }
 
 func (h *DownloadHandler) initializeState(contentLength int) {
-    h.State = &DownloadState{
-        Completed:       make([]bool, h.PartsCount),
-        IncompleteParts: make([]chunk, 0),
-        CurrentByte:     0,
-        TotalBytes:      int64(contentLength),
-        Mutex:           sync.Mutex{},
-        IsPaused:        false,
-        isCombined:      false,
-    }
     h.PauseChan = make(chan struct{})
 }
 
 
-func (h *DownloadHandler) StartDownloading(d Download) error {
-    supportsRange, contentLength, err := h.IsAcceptRangeSupported(d)
+func (h *DownloadHandler) StartDownloading() error {
+    supportsRange, contentLength, err := h.IsAcceptRangeSupported()
     if err != nil {
         return err
     }
     if !supportsRange {
-        return h.downloadWithoutRanges(d)
+        return h.downloadWithoutRanges()
     }
 
     h.PartsCount = (contentLength + h.CHUNK_SIZE - 1) / h.CHUNK_SIZE
+    h.Download.State.Completed = make([]bool, h.PartsCount)
+    h.Download.State.TotalBytes = int64(contentLength)
     h.initializeState(contentLength)
 
     // jobs: it's a channel used to send chunks to worker "task to download a specific piece (or "chunk")""
@@ -86,18 +74,18 @@ func (h *DownloadHandler) StartDownloading(d Download) error {
     var wg sync.WaitGroup
     for i := 0; i < h.WORKERS_COUNT; i++ {
         wg.Add(1)
-        go h.worker(i, &d, jobs, errChan, pauseAck, &wg)
+        go h.worker(i, jobs, errChan, pauseAck, &wg)
     }
 
-    h.startWorkers(&d, &wg, jobs, errChan, pauseAck)
+    h.startWorkers( &wg, jobs, errChan, pauseAck)
     go h.distributeJobs(jobs, contentLength)
     go h.waitForCompletion(&wg, errChan, done)
 
-    return h.handleDownloadCompletion(&d, contentLength, errChan, done)
+    return h.handleDownloadCompletion(h.Download, contentLength, errChan, done)
 }
 
-func (h *DownloadHandler) downloadWithoutRanges(d Download) error {
-    req, err := http.NewRequest("GET", d.URL, nil)
+func (h *DownloadHandler) downloadWithoutRanges() error {
+    req, err := http.NewRequest("GET", h.Download.URL, nil)
     if err != nil {
         return fmt.Errorf("failed to create request: %v", err)
     }
@@ -112,7 +100,7 @@ func (h *DownloadHandler) downloadWithoutRanges(d Download) error {
         return fmt.Errorf("server returned error status: %d", resp.StatusCode)
     }
 
-    file, err := os.Create(d.FilePath)
+    file, err := os.Create(h.Download.FilePath)
     if err != nil {
         return fmt.Errorf("failed to create file: %v", err)
     }
@@ -126,8 +114,8 @@ func (h *DownloadHandler) downloadWithoutRanges(d Download) error {
     return nil
 }
 
-func (h *DownloadHandler) downloadWithRanges(download *Download, start int, end int) error {
-    req, err := http.NewRequest("GET", download.URL, nil)
+func (h *DownloadHandler) downloadWithRanges(start int, end int) error {
+    req, err := http.NewRequest("GET", h.Download.URL, nil)
     if (err != nil) {
         fmt.Println(err)
         return err
@@ -146,7 +134,7 @@ func (h *DownloadHandler) downloadWithRanges(download *Download, start int, end 
 
     // create part files, we are writing in parts and combine it later
     partNumber := start / h.CHUNK_SIZE
-    partFileName := fmt.Sprintf("%s.part%d", download.FilePath, partNumber)
+    partFileName := fmt.Sprintf("%s.part%d", h.Download.FilePath, partNumber)
     file, err := os.Create(partFileName)
     if (err != nil) {
         fmt.Println(err)
