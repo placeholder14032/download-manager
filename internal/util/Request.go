@@ -5,6 +5,7 @@ type RequestType int
 const (
 	// download ones: these all have empty body and only OK/FAIL status
 	AddDownload RequestType = iota
+	StartDownload
 	PauseDownload
 	ResumeDownload
 	CancelDownload

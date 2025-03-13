@@ -72,6 +72,18 @@ func (m *Manager) addDownload(qID int64, url string) error {
 	return nil
 }
 
+func (m *Manager) startDownload(dlID int64) error {
+	i, j := m.findDownloadQueueIndex(dlID)
+	if i == -1 || j == -1 {
+		return fmt.Errorf(CANT_FIND_DL_ERROR, dlID)
+	}
+	dl := m.qs[i].DownloadLists[j] // just a copy of the real download
+	if dl.Status != download.Pending {
+		return fmt.Errorf(DOWNLOAD_IS_NOT_IN_STATE, dlID, "Pending")
+	}
+	return m.getHandler(dlID).StartDownloading(dl) // returns error or nil
+}
+
 func (m *Manager) pauseDownload(dlID int64) error {
 	i, j := m.findDownloadQueueIndex(dlID)
 	if i == -1 || j == -1 {

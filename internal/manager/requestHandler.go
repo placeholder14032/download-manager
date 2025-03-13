@@ -29,6 +29,16 @@ func (m *Manager) answerAddDL(r util.Request) {
 	m.answerERR(err)
 }
 
+func (m *Manager) answerStartDL(r util.Request) {
+	body, ok := r.Body.(util.BodyModDownload)
+	if !ok {
+		m.answerBadRequest(fmt.Sprintf(BAD_REQ_BODY_TYPE, "Start Download", "BodyAddDownload"))
+		return
+	}
+	err := m.startDownload(body.ID)
+	m.answerERR(err)
+}
+
 func (m *Manager) answerPauseDL(r util.Request) {
 	body, ok := r.Body.(util.BodyModDownload)
 	if !ok {
@@ -68,6 +78,8 @@ func (m *Manager) answerRequest(r util.Request) {
 	switch r.Type {
 	case util.AddDownload:
 		m.answerAddDL(r)
+	case util.StartDownload:
+		m.answerStartDL(r)
 	case util.PauseDownload:
 		m.answerPauseDL(r)
 	case util.ResumeDownload:
@@ -86,5 +98,4 @@ func (m *Manager) answerRequest(r util.Request) {
 		panic(fmt.Sprintf("unexpected util.RequestType: %#v", r.Type))
 	}
 }
-
 
