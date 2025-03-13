@@ -21,12 +21,6 @@ type Manager struct {
 func (m *Manager) handleEvent(e util.Event) {
 }
 
-func (m *Manager) sendAnswer() {
-}
-
-func (m *Manager) answerAddDownload(r util.Request) {
-}
-
 func (m *Manager) init() {
 	m.qs = make([]queue.Queue, 0)
 	m.hs = make(map[int64]*download.DownloadHandler)

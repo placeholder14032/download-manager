@@ -2,9 +2,16 @@ package manager
 
 import (
 	"fmt"
+	"net/http"
+	"time"
 
 	"github.com/placeholder14032/download-manager/internal/download"
 	"github.com/placeholder14032/download-manager/internal/util"
+)
+
+const (
+	CANT_FIND_DL_ERROR = "can't find download with id: %d"
+	DOWNLOAD_IS_NOT_IN_STATE = "download with id %d is not in state: %s"
 )
 
 func (m *Manager) findQueueIndex(qID int64) int { // maybe can be used to clean up some dublicate code
@@ -21,10 +28,17 @@ func (m *Manager) findDownloadQueueIndex(dlID int64) (int, int) {
 		for j, d := range q.DownloadLists {
 			if d.ID == dlID {
 				return i, j
-}
+			}
 		}
 	}
 	return -1, -1
+}
+
+func (m *Manager) getHandler(dlID int64) *download.DownloadHandler {
+	if m.hs[dlID] == nil {
+		m.hs[dlID] = createDefaultHandler()
+	}
+	return m.hs[dlID]
 }
 
 func createDownload(dlID int64, url string, filePath string, maxRetry int64) download.Download {
@@ -38,35 +52,47 @@ func createDownload(dlID int64, url string, filePath string, maxRetry int64) dow
 	}
 }
 
-func (m *Manager) addDownload(qID int64, url string) (int64, error) {
+func createDefaultHandler() *download.DownloadHandler {
+	return download.NewDownloadHandler(
+		&http.Client{Timeout: 30 * time.Minute},
+		CHUNK_SIZE,
+		8,
+		) // arbitary worker count. TODO decide based on something else? a config file maybe
+}
+
+func (m *Manager) addDownload(qID int64, url string) error {
 	i := m.findQueueIndex(qID)
 	if i == -1 {
-		return -1, fmt.Errorf("Bad queue id: %d", qID)
+		return fmt.Errorf("Bad queue id: %d", qID)
 	}
 	dl := createDownload(m.lastUID, url, "", 0)
 	m.lastUID++
 	m.qs[i].DownloadLists = append(m.qs[i].DownloadLists, dl)
-	return dl.ID, nil
+	m.hs[dl.ID] = createDefaultHandler()
+	return nil
 }
 
 func (m *Manager) pauseDownload(dlID int64) error {
 	i, j := m.findDownloadQueueIndex(dlID)
 	if i == -1 || j == -1 {
-		return fmt.Errorf("can't find download with id: %d", dlID)
+		return fmt.Errorf(CANT_FIND_DL_ERROR, dlID)
 	}
 	if m.qs[i].DownloadLists[j].Status != download.Downloading {
-		return fmt.Errorf("download with id %d is not running", dlID)
+		return fmt.Errorf(DOWNLOAD_IS_NOT_IN_STATE, dlID, "Downloading")
 	}
-	err := m.hs[dlID].Pause()
-	if err != nil {
-		return err
-	}
-	return nil
+	return m.getHandler(dlID).Pause() // returns error or nil
 }
 
-func (m *Manager) resumeDownload(queueId int64, dlId int64) error {
-	// TODO
-	return nil
+func (m *Manager) resumeDownload(dlID int64) error {
+	i, j := m.findDownloadQueueIndex(dlID)
+	if i == -1 || j == -1 {
+		return fmt.Errorf(CANT_FIND_DL_ERROR, dlID)
+	}
+	dl := m.qs[i].DownloadLists[j] // this is a copy of struct, chaning anything wont affect the real download
+	if dl.Status != download.Paused {
+		return fmt.Errorf(DOWNLOAD_IS_NOT_IN_STATE, dlID, "Paused")
+	}
+	return m.getHandler(dlID).Resume(dl)
 }
 
 func (m *Manager) retryDownload(dlID int64) error {
