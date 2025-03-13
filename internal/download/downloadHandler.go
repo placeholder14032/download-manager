@@ -33,7 +33,7 @@ type chunk struct {
 }
 
 
-func (download *Download) NewDownloadHandler(client *http.Client, chunkSize int, workersCount int) *DownloadHandler {
+func  NewDownloadHandler(client *http.Client, chunkSize int, workersCount int) *DownloadHandler {
     return &DownloadHandler{
         Client:        client,
         CHUNK_SIZE:    chunkSize,
