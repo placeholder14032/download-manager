@@ -99,12 +99,19 @@ func (h *DownloadHandler) worker(id int, jobs <-chan chunk, errChan chan<- error
             pauseAck <- true
             return
         default:
-            if err := h.downloadWithRanges( chunk.Start, chunk.End); err != nil {
+            if err := h.downloadWithRanges(chunk.Start, chunk.End); err != nil {
                 errChan <- fmt.Errorf("worker %d failed: %v", id, err)
                 return
             }
             h.Download.State.Mutex.Lock()
-            h.Download.State.Completed[chunk.Start/h.CHUNK_SIZE] = true
+            partIndex := chunk.Start / h.CHUNK_SIZE
+            if partIndex < len(h.Download.State.Completed) {
+                h.Download.State.Completed[partIndex] = true
+                currentBytes := h.Download.State.CurrentByte + int64(chunk.End-chunk.Start+1)
+                h.Download.State.CurrentByte = currentBytes
+                
+                h.Progress.UpdateBytesDone(currentBytes)
+            }
             h.Download.State.Mutex.Unlock()
         }
     }

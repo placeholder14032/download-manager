@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"time"
 )
 
 type DownloadHandler struct {
@@ -15,7 +16,10 @@ type DownloadHandler struct {
     PartsCount    int
     PauseChan     chan struct{} 
 
-    Download        *Download
+    DELTA         time.Duration
+    Progress      *ProgressTracker
+
+    Download      *Download
 }
 
 type DownloadState struct {
@@ -34,15 +38,19 @@ type chunk struct {
 }
 
 
-func   (download *Download)  NewDownloadHandler(client *http.Client, chunkSize int, workersCount int) *DownloadHandler {
+func  (download *Download)  NewDownloadHandler(client *http.Client, chunkSize int, workersCount int) *DownloadHandler {
     download.Init()
-    return &DownloadHandler{
+
+    dh := &DownloadHandler{
         Client:        client,
         CHUNK_SIZE:    chunkSize,
         WORKERS_COUNT: workersCount,
         PauseChan:     make(chan struct{}),
         Download: download,
+        DELTA: 1,
+        Progress:      NewProgressTracker(0, time.Second),
     }
+    return dh
 }
 
 func (h *DownloadHandler) initializeState(contentLength int) {
@@ -55,6 +63,8 @@ func (h *DownloadHandler) StartDownloading() error {
     if err != nil {
         return err
     }
+    h.Progress.TotalBytes = int64(contentLength)
+
     if !supportsRange {
         return h.downloadWithoutRanges()
     }
@@ -149,4 +159,23 @@ func (h *DownloadHandler) downloadWithRanges(start int, end int) error {
         return err
     }
     return nil
+}
+
+func (h *DownloadHandler) MonitorProgress(done chan bool) {
+    ticker := time.NewTicker(1 * time.Second)
+    defer ticker.Stop()
+
+    for {
+        select {
+        case <-done:
+            return
+        case <-ticker.C:
+            h.Download.State.Mutex.Lock()
+            currentProgress := h.Progress.GetProgress()
+            if !h.Download.State.IsPaused {
+                fmt.Printf("\rProgress: %.2f%%", currentProgress)
+            }
+            h.Download.State.Mutex.Unlock()
+        }
+    }
 }
