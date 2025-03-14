@@ -69,7 +69,42 @@ func (m *Manager) answerRetryDL(r util.Request) {
 	m.answerERR(err)
 }
 
+// creates a static queue list and returns it in response
 func (m *Manager) answerGetQueues(r util.Request) {
+	body := util.StaticQueueList{Queues: make([]util.QueueBody, len(m.qs))}
+	for i, q := range m.qs {
+		body.Queues[i] = convertToStaticQueue(&q)
+	}
+	resp := util.Response{
+		Type: util.OK,
+		Body: body,
+	}
+	m.resps <- resp
+}
+
+// returns a list of all downloads and their respective states.
+// maybe should sort them by state? dunno TODO
+func (m *Manager) answerGetDLS(r util.Request) {
+	count := 0 // first we count the number of total downloads to create a slice. I dont really like using the damn append on them
+	for _, q := range m.qs {
+		count += len(q.DownloadLists)
+	}
+	// now that we have the count we create a similar slice and add all download representives to it.
+	body := util.StaticDownloadList{
+		Downloads: make([]util.DownloadBody, count),
+	}
+	i := 0
+	for _, q := range m.qs {
+		for _, d := range q.DownloadLists {
+			body.Downloads[i] = convertToStaticDownload(&d)
+			i++
+		}
+	}
+	resp := util.Response {
+		Type: util.OK,
+		Body: body,
+	}
+	m.resps <- resp
 }
 
 func (m *Manager) answerRequest(r util.Request) {
@@ -93,7 +128,9 @@ func (m *Manager) answerRequest(r util.Request) {
 	case util.EditQueue:
 	//
 	case util.GetDownloads:
+		m.answerGetDLS(r)
 	case util.GetQueues:
+		m.answerGetQueues(r)
 	default:
 		panic(fmt.Sprintf("unexpected util.RequestType: %#v", r.Type))
 	}

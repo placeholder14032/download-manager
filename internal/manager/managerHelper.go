@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/placeholder14032/download-manager/internal/download"
+	"github.com/placeholder14032/download-manager/internal/queue"
 	"github.com/placeholder14032/download-manager/internal/util"
 )
 
@@ -60,13 +61,37 @@ func createDefaultHandler() *download.DownloadHandler {
 		) // arbitary worker count. TODO decide based on something else? a config file maybe
 }
 
+// this takes in a pointer just so we dont have dangling copies of everything
+// that needs to be cleaned up but there is really no actual need
+func convertToStaticQueue(q *queue.Queue) util.QueueBody {
+	return util.QueueBody{
+		ID: q.ID,
+		Directory: q.SaveDir,
+		MaxSimul: q.MaxConcurrent,
+		MaxBandWidth: q.MaxBandwidth,
+		MaxRetries: q.MaxRetries,
+		TimeRange: q.TimeRange,
+	}
+}
+
+func convertToStaticDownload(d *download.Download) util.DownloadBody {
+	return util.DownloadBody{
+		ID: d.ID,
+		URL: d.URL,
+		FilePath: d.FilePath,
+		Status: d.Status,
+		Progress: d.GetProgress(),
+		Speed: d.GetSpeed(),
+	}
+}
+
 func (m *Manager) addDownload(qID int64, url string) error {
 	i := m.findQueueIndex(qID)
 	if i == -1 {
 		return fmt.Errorf("Bad queue id: %d", qID)
 	}
 	dl := createDownload(m.lastUID, url, "", 0)
-	m.lastUID++
+m.lastUID++
 	m.qs[i].DownloadLists = append(m.qs[i].DownloadLists, dl)
 	m.hs[dl.ID] = createDefaultHandler()
 	return nil

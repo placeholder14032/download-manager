@@ -11,3 +11,13 @@ type Download struct {
 	MaxRetries   int64
 }
 
+func (d *Download) GetProgress() int64 {
+	// TODO
+	return 0
+}
+
+func (d *Download) GetSpeed() int64 {
+	// TODO
+	return 0
+}
+
