@@ -11,12 +11,11 @@ type ProgressTracker struct {
 	BytesDone     int64
 	StartTime     time.Time
 	LastUpdate    time.Time
-	LastBytesDone int64
 	Mutex         sync.Mutex
 
-	delta  time.Duration // the delta we want to calculate current speed with (eg. 0.5-1 sec)
-	downloadedBytesInDelta     int64         
-	timeStampStart     time.Time // we are saving last time we are calculating downloadedBytesInDelta from
+	delta                 time.Duration // the delta we want to calculate current speed with (eg. 0.5-1 sec)
+	downloadedBytesInDelta int64        // bytes downloaded in current delta window
+	timeStampStart        time.Time     // start time of current delta window
 }
 
 func NewProgressTracker(totalBytes int64, delta time.Duration) *ProgressTracker {
@@ -33,25 +32,28 @@ func NewProgressTracker(totalBytes int64, delta time.Duration) *ProgressTracker 
 
 }
 
-func (pt *ProgressTracker) UpdateBytesDone(lastUpdate int64) {
-	pt.Mutex.Lock()
-	defer pt.Mutex.Unlock()
+func (pt *ProgressTracker) UpdateBytesDone(currentBytes int64) {
+    pt.Mutex.Lock()
+    defer pt.Mutex.Unlock()
 
-	now := time.Now()
-	pt.LastUpdate = now
-	pt.LastBytesDone = lastUpdate
+    if currentBytes > pt.TotalBytes {
+        currentBytes = pt.TotalBytes
+    }
 
-	timePassed := now.Sub(pt.timeStampStart)
+    now := time.Now()
+    bytesDelta := currentBytes - pt.BytesDone
+    
+    // Update speed calculation
+    timePassed := now.Sub(pt.timeStampStart)
+    if timePassed >= pt.delta {
+        pt.downloadedBytesInDelta = bytesDelta
+        pt.timeStampStart = now
+    } else {
+        pt.downloadedBytesInDelta += bytesDelta
+    }
 
-
-	if timePassed >= pt.delta {
-		pt.downloadedBytesInDelta = lastUpdate - pt.BytesDone // Bytes since last paty
-		pt.timeStampStart = now
-	} else {
-		pt.downloadedBytesInDelta += lastUpdate - pt.BytesDone 
-	}
-
-	pt.BytesDone = lastUpdate
+    pt.BytesDone = currentBytes
+    pt.LastUpdate = now
 }
 
 func (pt *ProgressTracker) OverallSpeed() float64 {

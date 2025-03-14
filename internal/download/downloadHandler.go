@@ -22,6 +22,8 @@ type DownloadHandler struct {
     URL           string
     FilePath      string
     State         *DownloadState
+    BandWidth     int64
+    IsBandWidthLimited bool
 }
 
 type DownloadState struct {
@@ -40,16 +42,19 @@ type chunk struct {
 }
 
 
-func  (download *Download)  NewDownloadHandler(client *http.Client, chunkSize int, workersCount int) *DownloadHandler {
+func (download *Download) NewDownloadHandler(client *http.Client, chunkSize int, workersCount int, bandsWidth int64) *DownloadHandler {
     dh := &DownloadHandler{
-        Client:        client,
-        CHUNK_SIZE:    chunkSize,
-        WORKERS_COUNT: workersCount,
-        PauseChan:     make(chan struct{}),
-        URL: download.URL,
-        FilePath: download.FilePath,
-        DELTA: 1,
-        Progress:      NewProgressTracker(0, time.Second),
+        Client:            client,
+        CHUNK_SIZE:        chunkSize,
+        WORKERS_COUNT:     workersCount,
+        PauseChan:        make(chan struct{}),
+        URL:              download.URL,
+        FilePath:         download.FilePath,
+        DELTA:            time.Second,
+        Progress:         NewProgressTracker(0, time.Second),
+        State:            &DownloadState{}, // Initialize State
+        BandWidth:        bandsWidth,
+        IsBandWidthLimited: bandsWidth > 0,
     }
     return dh
 }
@@ -66,7 +71,7 @@ func (h *DownloadHandler) StartDownloading() error {
     }
     h.Progress.TotalBytes = int64(contentLength)
 
-    if !supportsRange {
+    if (!supportsRange) {
         return h.downloadWithoutRanges()
     }
 
@@ -153,13 +158,58 @@ func (h *DownloadHandler) downloadWithRanges(start int, end int) error {
     }
     defer file.Close()
 
-    // copy the response body to file
-    _, err = io.Copy(file, resp.Body)
-    if (err != nil) {
-        fmt.Println(err)
-        return err
+    // Bandwidth-limited download
+    const bufferSize = 8192
+    buf := make([]byte, bufferSize)
+    startTime := time.Now()
+    var bytesDownloaded int64
+
+    for {
+        select {
+        case <-h.PauseChan:
+            return nil
+        default:
+            n, err := resp.Body.Read(buf)
+            if n > 0 {
+                if _, err := file.Write(buf[:n]); err != nil {
+                    return fmt.Errorf("failed to write chunk: %v", err)
+                }
+                
+                bytesDownloaded += int64(n)
+                h.State.Mutex.Lock()
+                h.State.CurrentByte += int64(n)
+                currentTotal := h.State.CurrentByte
+                if currentTotal > h.State.TotalBytes {
+                    currentTotal = h.State.TotalBytes
+                }
+                h.State.Mutex.Unlock()
+                
+                h.Progress.UpdateBytesDone(currentTotal)
+
+                // Bandwidth control
+                if h.IsBandWidthLimited {
+                    elapsed := time.Since(startTime).Seconds()
+                    expectedBytes := int64(elapsed * float64(h.BandWidth))
+                    // if we downloaded more than bandswidth we need to sleep and wait for next tick
+                    if bytesDownloaded > expectedBytes {
+                        sleepTime := time.Duration(float64(bytesDownloaded-expectedBytes)/float64(h.BandWidth)*1000) * time.Millisecond
+                        time.Sleep(sleepTime)
+                    }
+                }
+            }
+            if err == io.EOF {
+                // update state as we failed
+                h.State.Mutex.Lock()
+                h.State.CurrentByte += int64(h.CHUNK_SIZE)
+                h.Progress.UpdateBytesDone(h.State.CurrentByte)
+                h.State.Mutex.Unlock()
+                return nil
+            }
+            if err != nil {
+                return fmt.Errorf("failed to read chunk: %v", err)
+            }
+        }
     }
-    return nil
 }
 
 func (h *DownloadHandler) MonitorProgress(done chan bool) {
