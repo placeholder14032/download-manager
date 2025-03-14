@@ -91,7 +91,7 @@ func (m *Manager) addDownload(qID int64, url string) error {
 		return fmt.Errorf("Bad queue id: %d", qID)
 	}
 	dl := createDownload(m.lastUID, url, "", 0)
-m.lastUID++
+	m.lastUID++
 	m.qs[i].DownloadLists = append(m.qs[i].DownloadLists, dl)
 	m.hs[dl.ID] = createDefaultHandler()
 	return nil
@@ -158,6 +158,24 @@ func (m *Manager) cancelDownload(dlID int64) error {
 	// TODO tell this handler to stop and delete all files
 	m.hs[dlID].Pause()
 	m.hs[dlID] = createDefaultHandler()
+	return nil
+}
+
+// gets the settings from a body
+// the id will be ignored so it should probably be -1
+func (m *Manager) addQueue(body util.QueueBody) error {
+	q := queue.Queue{
+		ID: m.lastQID,
+		Name: fmt.Sprintf("queue %d", m.lastQID),
+		DownloadLists: make([]download.Download, 0),
+		SaveDir: body.Directory,
+		MaxConcurrent: body.MaxSimul,
+		MaxBandwidth: body.MaxBandWidth,
+		MaxRetries: body.MaxRetries,
+		TimeRange: body.TimeRange,
+	}
+	m.lastQID++
+	m.qs = append(m.qs, q)
 	return nil
 }
 

@@ -13,6 +13,7 @@ type Manager struct {
 	qs      []queue.Queue
 	hs map[int64]*download.DownloadHandler
 	lastUID int64
+	lastQID int64
 	events  chan util.Event
 	req chan util.Request
 	resps chan util.Response

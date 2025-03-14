@@ -117,6 +117,16 @@ func (m *Manager) answerGetDLS(r util.Request) {
 	m.resps <- resp
 }
 
+func (m *Manager) answerAddQ(r util.Request) {
+	body, ok := r.Body.(util.QueueBody)
+	if !ok {
+		m.answerBadRequest(fmt.Sprintf(BAD_REQ_BODY_TYPE, "AddQueue", "QueueBody"))
+		return
+	}
+	err := m.addQueue(body)
+	m.answerERR(err)
+}
+
 func (m *Manager) answerRequest(r util.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -134,6 +144,7 @@ func (m *Manager) answerRequest(r util.Request) {
 	case util.CancelDownload:
 	//
 	case util.AddQueue:
+		m.answerAddQ(r)
 	case util.DeleteQueue:
 	case util.EditQueue:
 	//
