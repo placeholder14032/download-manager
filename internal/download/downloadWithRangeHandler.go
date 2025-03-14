@@ -79,7 +79,7 @@ func (h *DownloadHandler) worker(id int, jobs <-chan chunk, errChan chan<- error
     defer wg.Done()
 
     for chunk := range jobs {
-        // Check pause state before starting new chunk
+        // Check pause state
         h.Download.State.Mutex.Lock()
         if h.Download.State.IsPaused {
             h.Download.State.IncompleteParts = append(h.Download.State.IncompleteParts, chunk)
@@ -103,14 +103,14 @@ func (h *DownloadHandler) worker(id int, jobs <-chan chunk, errChan chan<- error
                 errChan <- fmt.Errorf("worker %d failed: %v", id, err)
                 return
             }
+            // Update progress with actual bytes written
             h.Download.State.Mutex.Lock()
             partIndex := chunk.Start / h.CHUNK_SIZE
             if partIndex < len(h.Download.State.Completed) {
                 h.Download.State.Completed[partIndex] = true
-                currentBytes := h.Download.State.CurrentByte + int64(chunk.End-chunk.Start+1)
-                h.Download.State.CurrentByte = currentBytes
-                
-                h.Progress.UpdateBytesDone(currentBytes)
+                chunkSize := int64(chunk.End - chunk.Start + 1)
+                h.Download.State.CurrentByte += chunkSize
+                h.Progress.UpdateBytesDone(h.Download.State.CurrentByte)
             }
             h.Download.State.Mutex.Unlock()
         }

@@ -1,9 +1,9 @@
 package download
 
 import (
-	"time"
-	"sync"
 	"fmt"
+	"sync"
+	"time"
 )
 
 type ProgressTracker struct {
@@ -70,12 +70,21 @@ func (pt *ProgressTracker) OverallSpeedFormated() string {
 
 
 
-func (pt *ProgressTracker) CurrentSpeed() float64{
+func (pt *ProgressTracker) CurrentSpeed() float64 {
 	pt.Mutex.Lock()
 	defer pt.Mutex.Unlock()
 
-	sec := pt.delta.Seconds()
-	return float64(pt.downloadedBytesInDelta)/ sec
+	// Calculate actual time passed since last update
+	timePassed := time.Since(pt.timeStampStart).Seconds()
+
+	// Avoid division by zero
+	if timePassed == 0 {
+		return 0
+	}
+
+	// Calculate current speed using actual bytes downloaded in the delta period
+	// This gives us a more accurate "instantaneous" speed measurement
+	return float64(pt.downloadedBytesInDelta) / timePassed
 }
 
 func (pt *ProgressTracker) CurrentSpeedFormatted() string {
