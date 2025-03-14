@@ -20,18 +20,18 @@ type SavedDownloadState struct{
 }
 
 func (h *DownloadHandler) Export() (*SavedDownloadState, error){
-		h.Download.State.Mutex.Lock()
-		defer h.Download.State.Mutex.Unlock()
+		h.State.Mutex.Lock()
+		defer h.State.Mutex.Unlock()
 
 		savedState := &SavedDownloadState{
-			URL: h.Download.URL,
-			FilePath: h.Download.FilePath,
+			URL: h.URL,
+			FilePath: h.FilePath,
 			CHUNK_SIZE: h.CHUNK_SIZE,
-			CompletedParts: h.Download.State.Completed,
-			CurrByte: h.Download.State.CurrentByte,
-			TotalBytes: h.Download.State.TotalBytes,
+			CompletedParts: h.State.Completed,
+			CurrByte: h.State.CurrentByte,
+			TotalBytes: h.State.TotalBytes,
 			PartsCount: h.PartsCount,
-			IsPaused: h.Download.State.IsPaused,
+			IsPaused: h.State.IsPaused,
 			IncompleteParts: make([]int, 0),
 		}
 
@@ -63,7 +63,7 @@ func Import(state *SavedDownloadState, client *http.Client)  (*DownloadHandler, 
         incompleteParts = append(incompleteParts, chunk{Start: start, End: end})
     }
 
-	handler.Download.State = &DownloadState{
+	handler.State = &DownloadState{
         Completed:       state.CompletedParts,
         IncompleteParts: incompleteParts,
         CurrentByte:     state.CurrByte,

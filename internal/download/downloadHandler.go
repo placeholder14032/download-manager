@@ -19,7 +19,9 @@ type DownloadHandler struct {
     DELTA         time.Duration
     Progress      *ProgressTracker
 
-    Download      *Download
+    URL           string
+    FilePath      string
+    State         *DownloadState
 }
 
 type DownloadState struct {
@@ -39,14 +41,13 @@ type chunk struct {
 
 
 func  (download *Download)  NewDownloadHandler(client *http.Client, chunkSize int, workersCount int) *DownloadHandler {
-    download.Init()
-
     dh := &DownloadHandler{
         Client:        client,
         CHUNK_SIZE:    chunkSize,
         WORKERS_COUNT: workersCount,
         PauseChan:     make(chan struct{}),
-        Download: download,
+        URL: download.URL,
+        FilePath: download.FilePath,
         DELTA: 1,
         Progress:      NewProgressTracker(0, time.Second),
     }
@@ -70,8 +71,8 @@ func (h *DownloadHandler) StartDownloading() error {
     }
 
     h.PartsCount = (contentLength + h.CHUNK_SIZE - 1) / h.CHUNK_SIZE
-    h.Download.State.Completed = make([]bool, h.PartsCount)
-    h.Download.State.TotalBytes = int64(contentLength)
+   h.State.Completed = make([]bool, h.PartsCount)
+   h.State.TotalBytes = int64(contentLength)
     h.initializeState(contentLength)
 
     // jobs: it's a channel used to send chunks to worker "task to download a specific piece (or "chunk")""
@@ -91,11 +92,11 @@ func (h *DownloadHandler) StartDownloading() error {
     go h.distributeJobs(jobs, contentLength)
     go h.waitForCompletion(&wg, errChan, done)
 
-    return h.handleDownloadCompletion(h.Download, contentLength, errChan, done)
+    return h.handleDownloadCompletion( contentLength, errChan, done)
 }
 
 func (h *DownloadHandler) downloadWithoutRanges() error {
-    req, err := http.NewRequest("GET", h.Download.URL, nil)
+    req, err := http.NewRequest("GET",h.URL, nil)
     if err != nil {
         return fmt.Errorf("failed to create request: %v", err)
     }
@@ -110,7 +111,7 @@ func (h *DownloadHandler) downloadWithoutRanges() error {
         return fmt.Errorf("server returned error status: %d", resp.StatusCode)
     }
 
-    file, err := os.Create(h.Download.FilePath)
+    file, err := os.Create(h.FilePath)
     if err != nil {
         return fmt.Errorf("failed to create file: %v", err)
     }
@@ -125,7 +126,7 @@ func (h *DownloadHandler) downloadWithoutRanges() error {
 }
 
 func (h *DownloadHandler) downloadWithRanges(start int, end int) error {
-    req, err := http.NewRequest("GET", h.Download.URL, nil)
+    req, err := http.NewRequest("GET",h.URL, nil)
     if (err != nil) {
         fmt.Println(err)
         return err
@@ -144,7 +145,7 @@ func (h *DownloadHandler) downloadWithRanges(start int, end int) error {
 
     // create part files, we are writing in parts and combine it later
     partNumber := start / h.CHUNK_SIZE
-    partFileName := fmt.Sprintf("%s.part%d", h.Download.FilePath, partNumber)
+    partFileName := fmt.Sprintf("%s.part%d",h.FilePath, partNumber)
     file, err := os.Create(partFileName)
     if (err != nil) {
         fmt.Println(err)
@@ -170,12 +171,12 @@ func (h *DownloadHandler) MonitorProgress(done chan bool) {
         case <-done:
             return
         case <-ticker.C:
-            h.Download.State.Mutex.Lock()
+           h.State.Mutex.Lock()
             currentProgress := h.Progress.GetProgress()
-            if !h.Download.State.IsPaused {
+            if !h.State.IsPaused {
                 fmt.Printf("\rProgress: %.2f%%", currentProgress)
             }
-            h.Download.State.Mutex.Unlock()
+           h.State.Mutex.Unlock()
         }
     }
 }
