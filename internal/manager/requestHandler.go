@@ -32,7 +32,7 @@ func (m *Manager) answerAddDL(r util.Request) {
 func (m *Manager) answerStartDL(r util.Request) {
 	body, ok := r.Body.(util.BodyModDownload)
 	if !ok {
-		m.answerBadRequest(fmt.Sprintf(BAD_REQ_BODY_TYPE, "Start Download", "BodyAddDownload"))
+		m.answerBadRequest(fmt.Sprintf(BAD_REQ_BODY_TYPE, "Start Download", "BodyModDownload"))
 		return
 	}
 	err := m.startDownload(body.ID)
@@ -42,7 +42,7 @@ func (m *Manager) answerStartDL(r util.Request) {
 func (m *Manager) answerPauseDL(r util.Request) {
 	body, ok := r.Body.(util.BodyModDownload)
 	if !ok {
-		m.answerBadRequest(fmt.Sprintf(BAD_REQ_BODY_TYPE, "Pause Download", "BodyAddDownload"))
+		m.answerBadRequest(fmt.Sprintf(BAD_REQ_BODY_TYPE, "Pause Download", "BodyModDownload"))
 		return
 	}
 	err := m.pauseDownload(body.ID)
@@ -52,7 +52,7 @@ func (m *Manager) answerPauseDL(r util.Request) {
 func (m *Manager) answerResumeDL(r util.Request) {
 	body, ok := r.Body.(util.BodyModDownload)
 	if !ok {
-		m.answerBadRequest(fmt.Sprintf(BAD_REQ_BODY_TYPE, "Resume Download", "BodyAddDownload"))
+		m.answerBadRequest(fmt.Sprintf(BAD_REQ_BODY_TYPE, "Resume Download", "BodyModDownload"))
 		return
 	}
 	err := m.resumeDownload(body.ID)
@@ -62,10 +62,20 @@ func (m *Manager) answerResumeDL(r util.Request) {
 func (m *Manager) answerRetryDL(r util.Request) {
 	body, ok := r.Body.(util.BodyModDownload)
 	if !ok {
-		m.answerBadRequest(fmt.Sprintf(BAD_REQ_BODY_TYPE, "Retry Download", "BodyAddDownload"))
+		m.answerBadRequest(fmt.Sprintf(BAD_REQ_BODY_TYPE, "Retry Download", "BodyModDownload"))
 		return
 	}
 	err := m.retryDownload(body.ID)
+	m.answerERR(err)
+}
+
+func (m *Manager) answerCancelDL(r util.Request) {
+	body, ok := r.Body.(util.BodyModDownload)
+	if !ok {
+		m.answerBadRequest(fmt.Sprintf(BAD_REQ_BODY_TYPE, "Cancel Download", "BodyModDownload"))
+		return
+	}
+	err := m.cancelDownload(body.ID)
 	m.answerERR(err)
 }
 
@@ -121,9 +131,9 @@ func (m *Manager) answerRequest(r util.Request) {
 		m.answerResumeDL(r)
 	case util.RetryDownload:
 		m.answerRetryDL(r)
+	case util.CancelDownload:
 	//
 	case util.AddQueue:
-	case util.CancelDownload:
 	case util.DeleteQueue:
 	case util.EditQueue:
 	//

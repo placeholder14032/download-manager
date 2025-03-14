@@ -147,6 +147,20 @@ func (m *Manager) retryDownload(dlID int64) error {
 	return m.hs[dlID].StartDownloading(m.qs[i].DownloadLists[j]) // will return error or nil
 }
 
+func (m *Manager) cancelDownload(dlID int64) error {
+	i, j := m.findDownloadQueueIndex(dlID)
+	if i == -1 || j == -1 {
+		return fmt.Errorf(CANT_FIND_DL_ERROR, dlID)
+	}
+	if m.qs[i].DownloadLists[j].Status != download.Downloading {
+		return fmt.Errorf(DOWNLOAD_IS_NOT_IN_STATE, dlID, "Downloading")
+	}
+	// TODO tell this handler to stop and delete all files
+	m.hs[dlID].Pause()
+	m.hs[dlID] = createDefaultHandler()
+	return nil
+}
+
 func (m *Manager) answerBadRequest(msg string) {
 	resp := util.Response {
 		Type: util.FAIL,
