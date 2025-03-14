@@ -28,11 +28,10 @@ func DrawMainQueuePage(app *tview.Application) {
 	var queueOptions = tview.NewList().
 		AddItem("> NEW QUEUE", "adding new qeueu", 'a', func() { drawNewQueue(app) }).
 		AddItem("> EDIT QUEUE", "edit existing queue", 'b', func() { drawSelectQueue(app) })
-
 	selectOptionQueueFlex = tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(queueOptions, 4, 0, true).
-		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewTextView().SetBackgroundColor(tcell.ColorBlack), 0, 1, false).
 		AddItem(footer, 1, 0, false)
 
 	app.SetRoot(selectOptionQueueFlex, true).SetFocus(queueOptions)
@@ -42,13 +41,13 @@ func DrawMainQueuePage(app *tview.Application) {
 func drawNewQueue(app *tview.Application) {
 	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | Esc to go back | f[1,2,3] to chnage tabs | Ctrl+q to quit")
 	var currentStep, maxStep int = 0, 7
-	nameQueueInput := tview.NewInputField().SetLabel("Name: ")
-	directoryQueueInput := tview.NewInputField().SetLabel("Directory: ")
-	maxSimultaneousQueueInput := tview.NewInputField().SetLabel("Max Simultaneous: ")
-	maxBandwidthQueueInput := tview.NewInputField().SetLabel("Max Bandwidth: ")
-	startTimeQueueInput := tview.NewInputField().SetLabel("Start Time: ")
-	endTimeQueueInput := tview.NewInputField().SetLabel("End Time: ")
-	maxTryQueueInput := tview.NewInputField().SetLabel("Max Retry: ")
+	nameQueueInput := tview.NewInputField().SetLabel("Name: ").SetFieldBackgroundColor(tcell.ColorBlack)
+	directoryQueueInput := tview.NewInputField().SetLabel("Directory: ").SetFieldBackgroundColor(tcell.ColorBlack)
+	maxSimultaneousQueueInput := tview.NewInputField().SetLabel("Max Simultaneous: ").SetFieldBackgroundColor(tcell.ColorBlack)
+	maxBandwidthQueueInput := tview.NewInputField().SetLabel("Max Bandwidth: ").SetFieldBackgroundColor(tcell.ColorBlack)
+	startTimeQueueInput := tview.NewInputField().SetLabel("Start Time: ").SetFieldBackgroundColor(tcell.ColorBlack)
+	endTimeQueueInput := tview.NewInputField().SetLabel("End Time: ").SetFieldBackgroundColor(tcell.ColorBlack)
+	maxTryQueueInput := tview.NewInputField().SetLabel("Max Retry: ").SetFieldBackgroundColor(tcell.ColorBlack)
 	var inputFields []*tview.InputField = []*tview.InputField{nameQueueInput, directoryQueueInput, maxSimultaneousQueueInput, maxBandwidthQueueInput, startTimeQueueInput, endTimeQueueInput, maxTryQueueInput}
 
 	nameQueueInput.SetDoneFunc(func(key tcell.Key) {
@@ -124,7 +123,7 @@ func drawNewQueue(app *tview.Application) {
 		AddItem(inputFields[4], 1, 0, true).
 		AddItem(inputFields[5], 1, 0, true).
 		AddItem(inputFields[6], 1, 0, true).
-		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewTextView().SetBackgroundColor(tcell.ColorBlack), 0, 1, false).
 		AddItem(footer, 1, 0, false)
 
 	addQueueFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -165,7 +164,7 @@ func drawSelectQueue(app *tview.Application) {
 	selectQueueFlex = tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(selectOptions, 2*listHeight, 0, true).
-		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewTextView().SetBackgroundColor(tcell.ColorBlack), 0, 1, false).
 		AddItem(footer, 1, 0, false)
 	app.SetRoot(selectQueueFlex, true).SetFocus(selectOptions)
 }
@@ -179,12 +178,12 @@ func getTimeString(t time.Time) string {
 func drawEditQueue(app *tview.Application) {
 	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | Esc to go back | f[1,2,3] to chnage tabs | Ctrl+q to quit")
 	var currentStep, maxStep int = 0, 6
-	directoryQueueInput := tview.NewInputField().SetLabel("Directory: ").SetText(selectedQueue.SaveDir)
-	maxSimultaneousQueueInput := tview.NewInputField().SetLabel("Max Simultaneous: ").SetText(strconv.FormatInt(selectedQueue.MaxConcurrent, 10))
-	maxBandwidthQueueInput := tview.NewInputField().SetLabel("Max Bandwidth: ").SetText(strconv.FormatInt(selectedQueue.MaxBandwidth, 10))
-	startTimeQueueInput := tview.NewInputField().SetLabel("Start Time: ").SetText(getTimeString(selectedQueue.TimeRange.Start))
-	endTimeQueueInput := tview.NewInputField().SetLabel("End Time: ").SetText(getTimeString(selectedQueue.TimeRange.End))
-	maxTryQueueInput := tview.NewInputField().SetLabel("Max Retry: ").SetText(strconv.FormatInt(selectedQueue.MaxRetries, 10))
+	directoryQueueInput := tview.NewInputField().SetLabel("Directory: ").SetText(selectedQueue.SaveDir).SetFieldBackgroundColor(tcell.ColorBlack)
+	maxSimultaneousQueueInput := tview.NewInputField().SetLabel("Max Simultaneous: ").SetText(strconv.FormatInt(selectedQueue.MaxConcurrent, 10)).SetFieldBackgroundColor(tcell.ColorBlack)
+	maxBandwidthQueueInput := tview.NewInputField().SetLabel("Max Bandwidth: ").SetText(strconv.FormatInt(selectedQueue.MaxBandwidth, 10)).SetFieldBackgroundColor(tcell.ColorBlack)
+	startTimeQueueInput := tview.NewInputField().SetLabel("Start Time: ").SetText(getTimeString(selectedQueue.TimeRange.Start)).SetFieldBackgroundColor(tcell.ColorBlack)
+	endTimeQueueInput := tview.NewInputField().SetLabel("End Time: ").SetText(getTimeString(selectedQueue.TimeRange.End)).SetFieldBackgroundColor(tcell.ColorBlack)
+	maxTryQueueInput := tview.NewInputField().SetLabel("Max Retry: ").SetText(strconv.FormatInt(selectedQueue.MaxRetries, 10)).SetFieldBackgroundColor(tcell.ColorBlack)
 	var inputFields []*tview.InputField = []*tview.InputField{directoryQueueInput, maxSimultaneousQueueInput, maxBandwidthQueueInput, startTimeQueueInput, endTimeQueueInput, maxTryQueueInput}
 
 	directoryQueueInput.SetDoneFunc(func(key tcell.Key) {
@@ -251,7 +250,7 @@ func drawEditQueue(app *tview.Application) {
 		AddItem(inputFields[3], 1, 0, true).
 		AddItem(inputFields[4], 1, 0, true).
 		AddItem(inputFields[5], 1, 0, true).
-		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewTextView().SetBackgroundColor(tcell.ColorBlack), 0, 1, false).
 		AddItem(footer, 1, 0, false)
 
 	editQueueFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {

@@ -12,12 +12,13 @@ var urlDownload, nameDownload, queueDownload string
 func DrawNewDownloadPage(app *tview.Application) {
 	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | Esc to go back | f[1,2,3] to chnage tabs | Ctrl+q to quit")
 	var currentStep, maxStep int = 0, 3
-	nameDownloadInput := tview.NewInputField().SetLabel("Name: ")
-	urlDownloadInput := tview.NewInputField().SetLabel("Url: ")
+	nameDownloadInput := tview.NewInputField().SetLabel("Name: ").SetFieldBackgroundColor(tcell.ColorBlack)
+	urlDownloadInput := tview.NewInputField().SetLabel("Url: ").SetFieldBackgroundColor(tcell.ColorBlack)
 	var inputFields []*tview.InputField = []*tview.InputField{nameDownloadInput, urlDownloadInput}
 	queueDropDown := tview.NewDropDown().SetLabel("Queue: ").
 		SetOptions([]string{"Queue1", "Queue2", "Queue3"}, nil).
 		SetCurrentOption(0)
+	queueDropDown.SetFieldBackgroundColor(tcell.ColorBlack)
 	isQueueDropDownOpen := false
 	queueDropDown.SetSelectedFunc(func(text string, index int) {
 		app.Stop()
@@ -44,7 +45,7 @@ func DrawNewDownloadPage(app *tview.Application) {
 		AddItem(inputFields[0], 1, 0, true).
 		AddItem(inputFields[1], 1, 0, true).
 		AddItem(queueDropDown, 1, 0, true).
-		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewTextView().SetBackgroundColor(tcell.ColorBlack), 0, 1, false).
 		AddItem(footer, 1, 0, false)
 
 	newDownloadFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -54,7 +55,7 @@ func DrawNewDownloadPage(app *tview.Application) {
 				currentStep--
 				if currentStep < maxStep-1 {
 					app.SetFocus(inputFields[currentStep])
-					queueDropDown.SetFieldBackgroundColor(tcell.ColorBlue)
+					queueDropDown.SetFieldBackgroundColor(tcell.ColorBlack)
 					isQueueDropDownOpen = false
 				}
 				return nil
