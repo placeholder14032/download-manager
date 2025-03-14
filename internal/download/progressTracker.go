@@ -3,6 +3,7 @@ package download
 import (
 	"time"
 	"sync"
+	"fmt"
 )
 
 type ProgressTracker struct {
@@ -63,13 +64,22 @@ func (pt *ProgressTracker) OverallSpeed() float64 {
 	}
 	return float64(pt.BytesDone) / elapsed
 }
+func (pt *ProgressTracker) OverallSpeedFormated() string {
+	return formatSpeed(pt.OverallSpeed())
+}
 
-func (pt *ProgressTracker) CurrentSPeed() float64{
+
+
+func (pt *ProgressTracker) CurrentSpeed() float64{
 	pt.Mutex.Lock()
 	defer pt.Mutex.Unlock()
 
 	sec := pt.delta.Seconds()
 	return float64(pt.downloadedBytesInDelta)/ sec
+}
+
+func (pt *ProgressTracker) CurrentSpeedFormatted() string {
+	return formatSpeed(pt.CurrentSpeed())
 }
 
 func (pt *ProgressTracker) GetProgress() float64{
@@ -80,4 +90,23 @@ func (pt *ProgressTracker) GetProgress() float64{
 		return 0
 	}
 	return float64(pt.BytesDone) / float64(pt.TotalBytes) * 100
+}
+
+func formatSpeed(bytesPerSec float64) string {
+	const (
+		KB = 1024
+		MB = 1024 * KB
+		GB = 1024 * MB
+	)
+
+	switch {
+	case bytesPerSec >= GB:
+		return fmt.Sprintf("%.2f GB/s", bytesPerSec/float64(GB))
+	case bytesPerSec >= MB:
+		return fmt.Sprintf("%.2f MB/s", bytesPerSec/float64(MB))
+	case bytesPerSec >= KB:
+		return fmt.Sprintf("%.2f KB/s", bytesPerSec/float64(KB))
+	default:
+		return fmt.Sprintf("%.2f B/s", bytesPerSec)
+	}
 }
