@@ -1,7 +1,6 @@
 package manager
 
 import (
-	"errors"
 	"sync"
 
 	"github.com/placeholder14032/download-manager/internal/download"
@@ -9,84 +8,25 @@ import (
 	"github.com/placeholder14032/download-manager/internal/util"
 )
 
-type EventType int
-
-const (
-	DownloadFailed EventType = iota
-	DownloadFinished
-)
-
-type Event struct {
-	Type EventType
-	Body any // probably is gonna be a map[string]string or something more specific
-}
-
 type Manager struct {
-	mu sync.Mutex // used to protect the following fields
-	qs []queue.Queue
+	mu      sync.Mutex // used to protect the following fields
+	qs      []queue.Queue
+	hs map[int64]*download.DownloadHandler
 	lastUID int64
-	events chan Event
+	lastQID int64
+	events  chan util.Event
+	req chan util.Request
+	resps chan util.Response
 }
 
-func (m *Manager) findQueueIndex(queueId int64) int { // maybe can be used to clean up some dublicate code
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for i := 0; i < len(m.qs); i++ {
-		if m.qs[i].ID == queueId {
-			return i
-		}
-	}
-	return -1
-}
-
-func (m *Manager) AddDownload(queueId int64, url string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	//
-	for i := 0; i < len(m.qs); i++ {
-		if m.qs[i].ID == queueId {
-			m.qs[i].AddDownload(download.Download {
-				ID: m.lastUID,
-				URL: url,
-			})
-			m.lastUID++
-			return nil
-		}
-	}
-	return errors.New("bad queue id")
-}
-
-func (m *Manager) PauseDownload(queueId int64, dlId int64) error {
-	m.mu.Lock()
-	defer m.mu.Unlock() // make sure to unlock after use
-	//
-	for i := 0; i < len(m.qs); i++ {
-		if m.qs[i].ID == queueId {
-			return m.qs[i].PauseDownload(dlId) // if it errors we return an error too
-		}
-	}
-	return errors.New("bad queue id")
-}
-
-func (m *Manager) ResumeDownload(queueId int64, dlId int64) error {
-	m.mu.Lock()
-	defer m.mu.Unlock() // make sure to unlock after use
-	//
-	for i := 0; i < len(m.qs); i++ {
-		if m.qs[i].ID == queueId {
-			return m.qs[i].ResumeDownload(dlId) // if it errors we return an error too
-		}
-	}
-	return errors.New("bad queue id")
-}
-
-func (m *Manager) handleEvent(e Event) {
-}
-
-func (m *Manager) answerRequest(r util.Request) {
+func (m *Manager) handleEvent(e util.Event) {
 }
 
 func (m *Manager) init() {
+	m.qs = make([]queue.Queue, 0)
+	m.hs = make(map[int64]*download.DownloadHandler)
+	m.lastUID = 1
+	m.events = make(chan util.Event)
 }
 
 func (m *Manager) loadJson() {
@@ -94,9 +34,11 @@ func (m *Manager) loadJson() {
 }
 
 func (m *Manager) Start(req chan util.Request, resps chan util.Response) {
-	// start downloading unpaused downloads
 	// Initialization
 	m.init()
+	m.req = req
+	m.resps = resps
+	// start downloading unpaused downloads
 	// load json
 	m.loadJson()
 	// starting the main loop handling events and occasionally checking the whole state of things
@@ -106,8 +48,6 @@ func (m *Manager) Start(req chan util.Request, resps chan util.Response) {
 			m.handleEvent(e)
 		case r := <- req:
 			m.answerRequest(r)
-		default:
 		}
 	}
 }
-

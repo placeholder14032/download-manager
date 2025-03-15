@@ -14,3 +14,13 @@ type Download struct {
 	Handler		DownloadHandler
 }
 
+func (d *Download) GetProgress() int64 {
+	// TODO
+	return 0
+}
+
+func (d *Download) GetSpeed() int64 {
+	// TODO
+	return 0
+}
+
