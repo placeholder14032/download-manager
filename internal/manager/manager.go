@@ -3,7 +3,6 @@ package manager
 import (
 	"sync"
 
-	"github.com/placeholder14032/download-manager/internal/download"
 	"github.com/placeholder14032/download-manager/internal/queue"
 	"github.com/placeholder14032/download-manager/internal/util"
 )
@@ -11,7 +10,6 @@ import (
 type Manager struct {
 	mu      sync.Mutex // used to protect the following fields
 	qs      []queue.Queue
-	//hs map[int64]*download.DownloadHandler
 	lastUID int64
 	lastQID int64
 	events  chan util.Event
@@ -19,12 +17,8 @@ type Manager struct {
 	resps chan util.Response
 }
 
-func (m *Manager) handleEvent(e util.Event) {
-}
-
 func (m *Manager) init() {
 	m.qs = make([]queue.Queue, 0)
-	//m.hs = make(map[int64]*download.DownloadHandler)
 	m.lastUID = 1
 	m.events = make(chan util.Event)
 }
