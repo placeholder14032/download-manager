@@ -137,6 +137,16 @@ func (m *Manager) answerEditQ(r util.Request) {
 	m.answerERR(err)
 }
 
+func (m *Manager) answerDelQ(r util.Request) {
+	body, ok := r.Body.(util.QueueBody)
+	if !ok {
+		m.answerBadRequest(fmt.Sprintf(BAD_REQ_BODY_TYPE, "DelQueue", "QueueBody"))
+		return
+	}
+	err := m.delQueue(body)
+	m.answerERR(err)
+}
+
 func (m *Manager) answerRequest(r util.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

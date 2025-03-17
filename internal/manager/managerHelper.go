@@ -196,6 +196,16 @@ func (m *Manager) editQueue(body util.QueueBody) error {
 	return nil
 }
 
+func (m *Manager) delQueue(body util.QueueBody) error {
+	qid := body.ID;
+	i := m.findQueueIndex(qid)
+	if m.checkRunningDLS(i) {
+		return fmt.Errorf(DOWNLOADS_ARE_RUNNING, qid)
+	}
+	m.qs = util.Remove(m.qs, i)
+	return nil
+}
+
 func (m *Manager) answerBadRequest(msg string) {
 	resp := util.Response {
 		Type: util.FAIL,

@@ -36,3 +36,12 @@ type DownloadBody struct {
 	Speed int64 // probably something likes bytes per second or some shit
 }
 
+// this is a function used to remove an element from a slice
+// which is probably used in many places.
+// the basic idea is using append to splice together two parts
+// from before and after the index we want to remove
+
+func Remove[T any](slice []T, idx int) []T {
+	return append(slice[:idx], slice[idx+1:]...)
+}
+
