@@ -169,6 +169,7 @@ func (m *Manager) answerRequest(r util.Request) {
 	case util.EditQueue:
 		m.answerEditQ(r)
 	case util.DeleteQueue:
+		m.answerDelQ(r)
 	//
 	case util.GetDownloads:
 		m.answerGetDLS(r)
