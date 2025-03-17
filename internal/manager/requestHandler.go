@@ -162,6 +162,7 @@ func (m *Manager) answerRequest(r util.Request) {
 	case util.RetryDownload:
 		m.answerRetryDL(r)
 	case util.CancelDownload:
+		m.answerCancelDL(r)
 	//
 	case util.AddQueue:
 		m.answerAddQ(r)
