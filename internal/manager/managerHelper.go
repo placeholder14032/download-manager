@@ -3,7 +3,6 @@ package manager
 import (
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/placeholder14032/download-manager/internal/download"
 	"github.com/placeholder14032/download-manager/internal/queue"
@@ -35,13 +34,6 @@ func (m *Manager) findDownloadQueueIndex(dlID int64) (int, int) {
 	return -1, -1
 }
 
-func (m *Manager) getHandler(dlID int64) *download.DownloadHandler {
-	if m.hs[dlID] == nil {
-		m.hs[dlID] = createDefaultHandler()
-	}
-	return m.hs[dlID]
-}
-
 func createDownload(dlID int64, url string, filePath string, maxRetry int64) download.Download {
 	return download.Download {
 		ID: dlID,
@@ -53,12 +45,8 @@ func createDownload(dlID int64, url string, filePath string, maxRetry int64) dow
 	}
 }
 
-func createDefaultHandler() *download.DownloadHandler {
-	return download.NewDownloadHandler(
-		&http.Client{Timeout: 30 * time.Minute},
-		CHUNK_SIZE,
-		8,
-		) // arbitary worker count. TODO decide based on something else? a config file maybe
+func createDefaultHandler(d *download.Download) {
+	d.NewDownloadHandler(http.DefaultClient, CHUNK_SIZE, 8, 0)
 }
 
 // this takes in a pointer just so we dont have dangling copies of everything
@@ -91,9 +79,9 @@ func (m *Manager) addDownload(qID int64, url string) error {
 		return fmt.Errorf("Bad queue id: %d", qID)
 	}
 	dl := createDownload(m.lastUID, url, "", 0)
+	createDefaultHandler(&dl)
 	m.lastUID++
 	m.qs[i].DownloadLists = append(m.qs[i].DownloadLists, dl)
-	m.hs[dl.ID] = createDefaultHandler()
 	return nil
 }
 
@@ -102,11 +90,11 @@ func (m *Manager) startDownload(dlID int64) error {
 	if i == -1 || j == -1 {
 		return fmt.Errorf(CANT_FIND_DL_ERROR, dlID)
 	}
-	dl := m.qs[i].DownloadLists[j] // just a copy of the real download
+	dl := &m.qs[i].DownloadLists[j] // pointer to the real download
 	if dl.Status != download.Pending {
 		return fmt.Errorf(DOWNLOAD_IS_NOT_IN_STATE, dlID, "Pending")
 	}
-	return m.getHandler(dlID).StartDownloading(dl) // returns error or nil
+	return dl.Handler.StartDownloading() // returns error or nil
 }
 
 func (m *Manager) pauseDownload(dlID int64) error {
@@ -114,10 +102,11 @@ func (m *Manager) pauseDownload(dlID int64) error {
 	if i == -1 || j == -1 {
 		return fmt.Errorf(CANT_FIND_DL_ERROR, dlID)
 	}
-	if m.qs[i].DownloadLists[j].Status != download.Downloading {
+	dl := &m.qs[i].DownloadLists[j] // pointer to the real download
+	if dl.Status != download.Downloading {
 		return fmt.Errorf(DOWNLOAD_IS_NOT_IN_STATE, dlID, "Downloading")
 	}
-	return m.getHandler(dlID).Pause() // returns error or nil
+	return dl.Handler.Pause() // returns error or nil
 }
 
 func (m *Manager) resumeDownload(dlID int64) error {
@@ -125,11 +114,11 @@ func (m *Manager) resumeDownload(dlID int64) error {
 	if i == -1 || j == -1 {
 		return fmt.Errorf(CANT_FIND_DL_ERROR, dlID)
 	}
-	dl := m.qs[i].DownloadLists[j] // this is a copy of struct, chaning anything wont affect the real download
+	dl := &m.qs[i].DownloadLists[j] // pointer to the real download
 	if dl.Status != download.Paused {
-		return fmt.Errorf(DOWNLOAD_IS_NOT_IN_STATE, dlID, "Paused")
+		return fmt.Errorf(DOWNLOAD_IS_NOT_IN_STATE, dlID, "Downloading")
 	}
-	return m.getHandler(dlID).Resume(dl)
+	return dl.Handler.Resume(*dl) // returns error or nil
 }
 
 func (m *Manager) retryDownload(dlID int64) error {
@@ -142,9 +131,9 @@ func (m *Manager) retryDownload(dlID int64) error {
 		return fmt.Errorf(DOWNLOAD_IS_NOT_IN_STATE, dlID, "Cancelled or Failed")
 	}
 	dl.Status = download.Retrying // temporary status to stop other threads from meddling with this one even though there might not be any other threads probably
-	m.getHandler(dlID).Pause() // effectively this should kill all the workers because
-	m.hs[dlID] = createDefaultHandler()
-	return m.hs[dlID].StartDownloading(m.qs[i].DownloadLists[j]) // will return error or nil
+	dl.Handler.Pause() // effectively this should kill all the workers because
+	createDefaultHandler(dl)
+	return dl.Handler.StartDownloading() // returns error or nil
 }
 
 func (m *Manager) cancelDownload(dlID int64) error {
@@ -152,12 +141,13 @@ func (m *Manager) cancelDownload(dlID int64) error {
 	if i == -1 || j == -1 {
 		return fmt.Errorf(CANT_FIND_DL_ERROR, dlID)
 	}
-	if m.qs[i].DownloadLists[j].Status != download.Downloading {
+	dl := &m.qs[i].DownloadLists[j] // not a copy
+	if dl.Status != download.Downloading {
 		return fmt.Errorf(DOWNLOAD_IS_NOT_IN_STATE, dlID, "Downloading")
 	}
 	// TODO tell this handler to stop and delete all files
-	m.hs[dlID].Pause()
-	m.hs[dlID] = createDefaultHandler()
+	dl.Handler.Pause()
+	createDefaultHandler(dl)
 	return nil
 }
 

@@ -11,7 +11,7 @@ import (
 type Manager struct {
 	mu      sync.Mutex // used to protect the following fields
 	qs      []queue.Queue
-	hs map[int64]*download.DownloadHandler
+	//hs map[int64]*download.DownloadHandler
 	lastUID int64
 	lastQID int64
 	events  chan util.Event
@@ -24,7 +24,7 @@ func (m *Manager) handleEvent(e util.Event) {
 
 func (m *Manager) init() {
 	m.qs = make([]queue.Queue, 0)
-	m.hs = make(map[int64]*download.DownloadHandler)
+	//m.hs = make(map[int64]*download.DownloadHandler)
 	m.lastUID = 1
 	m.events = make(chan util.Event)
 }
