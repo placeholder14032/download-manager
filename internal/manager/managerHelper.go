@@ -12,6 +12,7 @@ import (
 const (
 	CANT_FIND_DL_ERROR = "can't find download with id: %d"
 	DOWNLOAD_IS_NOT_IN_STATE = "download with id %d is not in state: %s"
+	DOWNLOADS_ARE_RUNNING = "downloads are running in queueu: %d: can not modify"
 )
 
 func (m *Manager) findQueueIndex(qID int64) int { // maybe can be used to clean up some dublicate code
@@ -94,6 +95,7 @@ func (m *Manager) startDownload(dlID int64) error {
 	if dl.Status != download.Pending {
 		return fmt.Errorf(DOWNLOAD_IS_NOT_IN_STATE, dlID, "Pending")
 	}
+	dl.Status = download.Starting
 	return dl.Handler.StartDownloading() // returns error or nil
 }
 
@@ -148,6 +150,7 @@ func (m *Manager) cancelDownload(dlID int64) error {
 	// TODO tell this handler to stop and delete all files
 	dl.Handler.Pause()
 	createDefaultHandler(dl)
+	dl.Status = download.Cancelled
 	return nil
 }
 
@@ -166,6 +169,30 @@ func (m *Manager) addQueue(body util.QueueBody) error {
 	}
 	m.lastQID++
 	m.qs = append(m.qs, q)
+	return nil
+}
+
+func (m *Manager) checkRunningDLS(qidx int) bool {
+	// checks if any downloads are running to stop queue modification
+	for _, dl := range m.qs[qidx].DownloadLists {
+		if dl.Status == download.Downloading || dl.Status == download.Paused || dl.Status == download.Starting || dl.Status == download.Retrying {
+			return false
+		}
+	}
+	return true
+}
+
+func (m *Manager) editQueue(body util.QueueBody) error {
+	qid := body.ID;
+	i := m.findQueueIndex(qid)
+	if m.checkRunningDLS(i) {
+		return fmt.Errorf(DOWNLOADS_ARE_RUNNING, qid)
+	}
+	m.qs[i].SaveDir = body.Directory
+	m.qs[i].MaxConcurrent = body.MaxSimul
+	m.qs[i].MaxBandwidth = body.MaxBandWidth
+	m.qs[i].MaxRetries = body.MaxRetries
+	m.qs[i].TimeRange = body.TimeRange
 	return nil
 }
 
