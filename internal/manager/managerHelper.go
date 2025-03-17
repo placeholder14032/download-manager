@@ -12,6 +12,7 @@ import (
 const (
 	CANT_FIND_DL_ERROR = "can't find download with id: %d"
 	DOWNLOAD_IS_NOT_IN_STATE = "download with id %d is not in state: %s"
+	DOWNLOAD_IS_RUNNING = "download with id %d is still running"
 	DOWNLOADS_ARE_RUNNING = "downloads are running in queueu: %d: can not modify"
 )
 
@@ -72,6 +73,20 @@ func convertToStaticDownload(d *download.Download) util.DownloadBody {
 		Progress: d.GetProgress(),
 		Speed: d.GetSpeed(),
 	}
+}
+
+func checkRunningDL(d download.Download) bool {
+	return d.Status == download.Downloading || d.Status == download.Paused || d.Status == download.Starting || d.Status == download.Retrying
+}
+
+func checkRunningDLsInQueue(q queue.Queue) bool {
+	// checks if any downloads are running to stop queue modification
+	for _, dl := range q.DownloadLists {
+		if checkRunningDL(dl) {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *Manager) addDownload(qID int64, url string) error {
@@ -154,6 +169,19 @@ func (m *Manager) cancelDownload(dlID int64) error {
 	return nil
 }
 
+func (m *Manager) deleteDownload(dlID int64) error {
+	i, j := m.findDownloadQueueIndex(dlID)
+	if i == -1 || j == -1 {
+		return fmt.Errorf(CANT_FIND_DL_ERROR, dlID)
+	}
+	dl := &m.qs[i].DownloadLists[j] // not a copy
+	if checkRunningDL(*dl) {
+		return fmt.Errorf(DOWNLOAD_IS_RUNNING, dl.ID)
+	}
+	m.qs[i].DownloadLists = util.Remove(m.qs[i].DownloadLists, j)
+	return nil
+}
+
 // gets the settings from a body
 // the id will be ignored so it should probably be -1
 func (m *Manager) addQueue(body util.QueueBody) error {
@@ -172,20 +200,10 @@ func (m *Manager) addQueue(body util.QueueBody) error {
 	return nil
 }
 
-func (m *Manager) checkRunningDLS(qidx int) bool {
-	// checks if any downloads are running to stop queue modification
-	for _, dl := range m.qs[qidx].DownloadLists {
-		if dl.Status == download.Downloading || dl.Status == download.Paused || dl.Status == download.Starting || dl.Status == download.Retrying {
-			return false
-		}
-	}
-	return true
-}
-
 func (m *Manager) editQueue(body util.QueueBody) error {
 	qid := body.ID;
 	i := m.findQueueIndex(qid)
-	if m.checkRunningDLS(i) {
+	if checkRunningDLsInQueue(m.qs[i]) {
 		return fmt.Errorf(DOWNLOADS_ARE_RUNNING, qid)
 	}
 	m.qs[i].SaveDir = body.Directory
@@ -199,7 +217,7 @@ func (m *Manager) editQueue(body util.QueueBody) error {
 func (m *Manager) delQueue(body util.QueueBody) error {
 	qid := body.ID;
 	i := m.findQueueIndex(qid)
-	if m.checkRunningDLS(i) {
+	if checkRunningDLsInQueue(m.qs[i]) {
 		return fmt.Errorf(DOWNLOADS_ARE_RUNNING, qid)
 	}
 	m.qs = util.Remove(m.qs, i)

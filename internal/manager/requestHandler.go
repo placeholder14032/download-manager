@@ -79,6 +79,16 @@ func (m *Manager) answerCancelDL(r util.Request) {
 	m.answerERR(err)
 }
 
+func (m *Manager) answerDeleteDL(r util.Request) {
+	body, ok := r.Body.(util.BodyModDownload)
+	if !ok {
+		m.answerBadRequest(fmt.Sprintf(BAD_REQ_BODY_TYPE, "Delete Download", "BodyModDownload"))
+		return
+	}
+	err := m.deleteDownload(body.ID)
+	m.answerERR(err)
+}
+
 // creates a static queue list and returns it in response
 func (m *Manager) answerGetQueues(r util.Request) {
 	body := util.StaticQueueList{Queues: make([]util.QueueBody, len(m.qs))}
@@ -163,6 +173,8 @@ func (m *Manager) answerRequest(r util.Request) {
 		m.answerRetryDL(r)
 	case util.CancelDownload:
 		m.answerCancelDL(r)
+	case  util.DeleteDownload:
+		m.answerDeleteDL(r)
 	//
 	case util.AddQueue:
 		m.answerAddQ(r)

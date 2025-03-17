@@ -10,6 +10,7 @@ const (
 	ResumeDownload
 	CancelDownload
 	RetryDownload
+	DeleteDownload
 	// queue ones: these also have empty body
 	AddQueue
 	DeleteQueue
