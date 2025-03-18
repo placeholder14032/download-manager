@@ -10,7 +10,7 @@ var newDownloadFlex *tview.Flex
 var urlDownload, nameDownload, queueDownload string
 
 func DrawNewDownloadPage(app *tview.Application) {
-	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | Esc to go back | f[1,2,3] to chnage tabs | Ctrl+q to quit")
+	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | f[1,2,3] to chnage tabs | Ctrl+q to quit")
 	var currentStep, maxStep int = 0, 3
 	nameDownloadInput := tview.NewInputField().SetLabel("Name: ").SetFieldBackgroundColor(tcell.ColorBlack)
 	urlDownloadInput := tview.NewInputField().SetLabel("Url: ").SetFieldBackgroundColor(tcell.ColorBlack)

@@ -22,7 +22,7 @@ var nameQueue, directoryQueue, startTimeQueue, endTimeQueue string
 var maxSimultaneousQueue, maxTryQueue, maxBandwidthQueue int64
 
 func DrawMainQueuePage(app *tview.Application) {
-	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | Esc to go back | f[1,2,3] to chnage tabs | Ctrl+q to quit")
+	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | f[1,2,3] to chnage tabs | Ctrl+q to quit")
 	selectOptionQueueFlex = tview.NewFlex()
 
 	var queueOptions = tview.NewList().
@@ -39,7 +39,7 @@ func DrawMainQueuePage(app *tview.Application) {
 }
 
 func drawNewQueue(app *tview.Application) {
-	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | Esc to go back | f[1,2,3] to chnage tabs | Ctrl+q to quit")
+	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | f[1,2,3] to chnage tabs | Ctrl+q to quit")
 	var currentStep, maxStep int = 0, 7
 	nameQueueInput := tview.NewInputField().SetLabel("Name: ").SetFieldBackgroundColor(tcell.ColorBlack)
 	directoryQueueInput := tview.NewInputField().SetLabel("Directory: ").SetFieldBackgroundColor(tcell.ColorBlack)
@@ -149,7 +149,7 @@ func drawNewQueue(app *tview.Application) {
 func drawSelectQueue(app *tview.Application) {
 	// for test
 	var listQueues []queue.Queue = []queue.Queue{queue.Queue{Name: "a", SaveDir: "A", MaxConcurrent: 1, MaxBandwidth: 2, TimeRange: queue.TimeRange{time.Now(), time.Now()}, MaxRetries: 3}}
-	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | Esc to go back | f[1,2,3] to chnage tabs | Ctrl+q to quit")
+	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | f[1,2,3] to chnage tabs | Ctrl+q to quit")
 
 	var selectOptions = tview.NewList()
 	for i, q := range listQueues {
@@ -176,7 +176,7 @@ func getTimeString(t time.Time) string {
 }
 
 func drawEditQueue(app *tview.Application) {
-	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | Esc to go back | f[1,2,3] to chnage tabs | Ctrl+q to quit")
+	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | f[1,2,3] to chnage tabs | Ctrl+q to quit")
 	var currentStep, maxStep int = 0, 6
 	directoryQueueInput := tview.NewInputField().SetLabel("Directory: ").SetText(selectedQueue.SaveDir).SetFieldBackgroundColor(tcell.ColorBlack)
 	maxSimultaneousQueueInput := tview.NewInputField().SetLabel("Max Simultaneous: ").SetText(strconv.FormatInt(selectedQueue.MaxConcurrent, 10)).SetFieldBackgroundColor(tcell.ColorBlack)
