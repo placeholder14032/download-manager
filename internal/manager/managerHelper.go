@@ -3,6 +3,7 @@ package manager
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/placeholder14032/download-manager/internal/download"
 	"github.com/placeholder14032/download-manager/internal/queue"
@@ -48,7 +49,7 @@ func createDownload(dlID int64, url string, filePath string, maxRetry int64) dow
 }
 
 func createDefaultHandler(d *download.Download) {
-	d.NewDownloadHandler(http.DefaultClient, CHUNK_SIZE, 8, 0)
+	d.Handler = *d.NewDownloadHandler(&http.Client{Timeout: 10 * time.Second}, CHUNK_SIZE, 8, 0)
 }
 
 // this takes in a pointer just so we dont have dangling copies of everything
