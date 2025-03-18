@@ -32,8 +32,8 @@ type DownloadBody struct {
 	URL string
 	FilePath string
 	Status download.State
-	Progress int64 // probably a percentage
-	Speed int64 // probably something likes bytes per second or some shit
+	Progress float64 // percentage
+	Speed string // formatted string for speed
 }
 
 // this is a function used to remove an element from a slice

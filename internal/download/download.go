@@ -6,7 +6,6 @@ type Download struct {
 	URL          string
 	FilePath     string
 	Status       State
-	Progress     int64
 	RetryCount   int64
 	MaxRetries   int64
 
@@ -14,13 +13,12 @@ type Download struct {
 	Handler		DownloadHandler
 }
 
-func (d *Download) GetProgress() int64 {
-	// TODO
-	return 0
+func (d *Download) GetProgress() float64 {
+	return d.Handler.Progress.GetProgress()
 }
 
-func (d *Download) GetSpeed() int64 {
-	// TODO
-	return 0
+func (d *Download) GetSpeed() string {
+	// formatted speed
+	return d.Handler.Progress.CurrentSpeedFormatted()
 }
 
