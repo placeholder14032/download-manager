@@ -3,6 +3,7 @@ package manager
 import (
 	"fmt"
 	"net/http"
+	"path"
 	"time"
 
 	"github.com/placeholder14032/download-manager/internal/download"
@@ -35,6 +36,13 @@ func (m *Manager) findDownloadQueueIndex(dlID int64) (int, int) {
 		}
 	}
 	return -1, -1
+}
+
+func determineFilePath(directory string, url string) string {
+	// joins the directory with the filename
+	// if the directory doesn't have the last slash (/) it will usse the parent
+	// because it is seen as a file in that case
+	return path.Join(path.Dir(directory), path.Base(url))
 }
 
 func createDownload(dlID int64, url string, filePath string, maxRetry int64) download.Download {
@@ -95,7 +103,7 @@ func (m *Manager) addDownload(qID int64, url string) error {
 	if i == -1 {
 		return fmt.Errorf("Bad queue id: %d", qID)
 	}
-	dl := createDownload(m.lastUID, url, "", 0)
+	dl := createDownload(m.lastUID, url, determineFilePath(m.qs[i].SaveDir, url), 0)
 	createDefaultHandler(&dl)
 	m.lastUID++
 	m.qs[i].DownloadLists = append(m.qs[i].DownloadLists, dl)
