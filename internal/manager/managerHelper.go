@@ -49,7 +49,7 @@ func createDownload(dlID int64, url string, filePath string, maxRetry int64) dow
 	return download.Download {
 		ID: dlID,
 		URL: url,
-		FilePath: filePath, // TODO: derive from something. url or queue
+		FilePath: filePath,
 		MaxRetries: maxRetry,
 		Status: download.Pending,
 		RetryCount: 0,
@@ -57,7 +57,8 @@ func createDownload(dlID int64, url string, filePath string, maxRetry int64) dow
 }
 
 func createDefaultHandler(d *download.Download) {
-	d.Handler = *d.NewDownloadHandler(&http.Client{Timeout: 10 * time.Second}, CHUNK_SIZE, 8, 0)
+	d.Handler = *d.NewDownloadHandler(&http.Client{Timeout: 0}, CHUNK_SIZE, 8, 0)
+	// TODO check bandwidth limit because its buggy
 }
 
 // this takes in a pointer just so we dont have dangling copies of everything
@@ -85,7 +86,7 @@ func convertToStaticDownload(d *download.Download) util.DownloadBody {
 }
 
 func checkRunningDL(d download.Download) bool {
-	return d.Status == download.Downloading || d.Status == download.Paused || d.Status == download.Starting || d.Status == download.Retrying
+	return d.Status == download.Downloading || d.Status == download.Paused || d.Status == download.Retrying
 }
 
 func checkRunningDLsInQueue(q queue.Queue) bool {
@@ -96,6 +97,19 @@ func checkRunningDLsInQueue(q queue.Queue) bool {
 		}
 	}
 	return true
+}
+
+func getDownloadStarted(dl *download.Download, echan chan util.Event) {
+	dl.Status = download.Downloading
+	err := dl.Handler.StartDownloading()
+	if err == nil {
+		echan <- util.Event{Type: util.Finished, DownloadID: dl.ID}
+	} else {
+		echan <- util.Event{Type: util.Failed, DownloadID: dl.ID}
+	}
+	// this writing to channel will block the current goroutine
+	// but it's okay because the handler is running in the parent one
+	// and is not blocked
 }
 
 func (m *Manager) addDownload(qID int64, url string) error {
@@ -119,8 +133,8 @@ func (m *Manager) startDownload(dlID int64) error {
 	if dl.Status != download.Pending {
 		return fmt.Errorf(DOWNLOAD_IS_NOT_IN_STATE, dlID, "Pending")
 	}
-	dl.Status = download.Starting
-	return dl.Handler.StartDownloading() // returns error or nil
+	go getDownloadStarted(dl, m.events)
+	return nil
 }
 
 func (m *Manager) pauseDownload(dlID int64) error {
@@ -132,7 +146,13 @@ func (m *Manager) pauseDownload(dlID int64) error {
 	if dl.Status != download.Downloading {
 		return fmt.Errorf(DOWNLOAD_IS_NOT_IN_STATE, dlID, "Downloading")
 	}
-	return dl.Handler.Pause() // returns error or nil
+	err := dl.Handler.Pause()
+	if err == nil {
+		dl.Status = download.Paused
+	} else {
+		fmt.Println("cant pause", err)
+	}
+	return err
 }
 
 func (m *Manager) resumeDownload(dlID int64) error {
@@ -144,7 +164,13 @@ func (m *Manager) resumeDownload(dlID int64) error {
 	if dl.Status != download.Paused {
 		return fmt.Errorf(DOWNLOAD_IS_NOT_IN_STATE, dlID, "Downloading")
 	}
-	return dl.Handler.Resume(*dl) // returns error or nil
+	err := dl.Handler.Resume(*dl) // returns error or nil
+	if err == nil {
+		dl.Status = download.Downloading
+	} else {
+		fmt.Println("cant resume", err)
+	}
+	return err
 }
 
 func (m *Manager) retryDownload(dlID int64) error {
@@ -158,8 +184,10 @@ func (m *Manager) retryDownload(dlID int64) error {
 	}
 	dl.Status = download.Retrying // temporary status to stop other threads from meddling with this one even though there might not be any other threads probably
 	dl.Handler.Pause() // effectively this should kill all the workers because
+	// TODO clean up
 	createDefaultHandler(dl)
-	return dl.Handler.StartDownloading() // returns error or nil
+	go getDownloadStarted(dl, m.events)
+	return nil
 }
 
 func (m *Manager) cancelDownload(dlID int64) error {
@@ -171,7 +199,7 @@ func (m *Manager) cancelDownload(dlID int64) error {
 	if dl.Status != download.Downloading {
 		return fmt.Errorf(DOWNLOAD_IS_NOT_IN_STATE, dlID, "Downloading")
 	}
-	// TODO tell this handler to stop and delete all files
+	// TODO tell this handler to stop and delete all files (clean up)
 	dl.Handler.Pause()
 	createDefaultHandler(dl)
 	dl.Status = download.Cancelled

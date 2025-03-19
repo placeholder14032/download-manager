@@ -3,8 +3,7 @@ package util
 type EventType int
 
 const (
-	Starting EventType = iota
-	Pausing
+	Pausing EventType = iota
 	Resuming
 	Finished
 	Failed

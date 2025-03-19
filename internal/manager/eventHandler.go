@@ -20,8 +20,6 @@ func (m *Manager) handleEvent(e util.Event) {
 	}
 	dl := &m.qs[i].DownloadLists[j] // not a copy but a pointer to the real one
 	switch e.Type {
-	case util.Starting:
-		dl.Status = download.Downloading
 	case util.Pausing:
 		dl.Status = download.Paused
 	case util.Resuming:
