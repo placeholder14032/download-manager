@@ -144,6 +144,11 @@ func (h *DownloadHandler) isDownloadComplete() bool {
 }
 
 func (h *DownloadHandler) resumeDownloadWorkers(d Download, incompleteParts []chunk) error {
+    // Validate completed parts before resuming
+    if err := h.validateCompletedParts(); err != nil {
+        return fmt.Errorf("failed to validate completed parts: %v", err)
+    }
+
     // Kindda the same logic as DownloadHandler startinfDownload
     //  3 channels like DownloadHandler
     jobs := make(chan chunk, h.WORKERS_COUNT)
@@ -243,6 +248,44 @@ func (h *DownloadHandler) waitForDownloadResult(d Download, errChan chan error, 
         }
     case <-done:
         return h.combineParts(int(h.State.TotalBytes))
+    }
+    return nil
+}
+
+
+func (h *DownloadHandler) validateCompletedParts() error {
+    h.State.Mutex.Lock()
+    defer h.State.Mutex.Unlock()
+
+    for i := 0; i < h.PartsCount; i++ {
+        if !h.State.Completed[i] {
+            continue // Skip parts that aren't marked as completed
+        }
+
+        partFileName := fmt.Sprintf("%s.part%d", h.FilePath, i)
+        info, err := os.Stat(partFileName)
+        if err != nil {
+            if os.IsNotExist(err) {
+                // Part file doesn't exist, mark as not completed
+                fmt.Printf("Part %d does not exist, marking for re-download\n", i)
+                h.State.Completed[i] = false
+                continue
+            }
+            return fmt.Errorf("failed to stat part file %s: %v", partFileName, err)
+        }
+
+        expectedSize := h.CHUNK_SIZE
+        if i == h.PartsCount-1 {
+            expectedSize = int(h.State.TotalBytes % int64(h.CHUNK_SIZE))
+            if expectedSize == 0 {
+                expectedSize = h.CHUNK_SIZE
+            }
+        }
+
+        if info.Size() != int64(expectedSize) {
+            fmt.Printf("Part %d size mismatch: got %d, want %d, marking for re-download\n", i, info.Size(), expectedSize)
+            h.State.Completed[i] = false
+        }
     }
     return nil
 }

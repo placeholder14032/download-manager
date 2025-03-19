@@ -236,7 +236,6 @@ func (h *DownloadHandler) downloadWithRanges(start int, end int) error {
     return fmt.Errorf("failed after %d attempts: %v", maxRetries, lastErr)
 }
 
-// countingReader wraps an io.Reader to count the total bytes read
 type countingReader struct {
     reader io.Reader
     count  *int64
