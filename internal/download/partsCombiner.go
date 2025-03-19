@@ -11,6 +11,8 @@ import (
 
 type PartsCombiner struct {
     BufferSize int // Size of the copy buffer 
+    ContentLength int // Total size of the file
+    PartsCount int 
 }
 func NewPartsCombiner() *PartsCombiner {
     return &PartsCombiner{BufferSize: 32 * 1024} 
@@ -98,17 +100,47 @@ func (c *PartsCombiner) mergeParts(filePath string, partsMap map[int]string, par
     defer combinedFile.Close()
 
     buffer := make([]byte, c.BufferSize)
+    totalWritten := int64(0)
     for i := 0; i < partsCount; i++ {
-        partFile, err := os.Open(partsMap[i])
+        partFilePath := partsMap[i]
+        partFile, err := os.Open(partFilePath)
         if err != nil {
             return fmt.Errorf("failed to open part %d: %v", i, err)
         }
-        _, err = io.CopyBuffer(combinedFile, partFile, buffer)
+        info, err := partFile.Stat()
+        if err != nil {
+            partFile.Close()
+            return fmt.Errorf("failed to stat part %d: %v", i, err)
+        }
+        partSize := info.Size()
+        if partSize == 0 {
+            partFile.Close()
+            return fmt.Errorf("part %d is empty", i)
+        }
+        expectedSize := int64(10240)
+        if i == partsCount-1 { // Last part
+            expectedSize = int64( c.ContentLength % 10240)
+            if expectedSize == 0 {
+                expectedSize = 10240
+            }
+        }
+        if partSize != expectedSize {
+            partFile.Close()
+            return fmt.Errorf("part %d size mismatch before copy: got %d, want %d", i, partSize, expectedSize)
+        }
+
+        written, err := io.CopyBuffer(combinedFile, partFile, buffer)
         partFile.Close()
         if err != nil {
             return fmt.Errorf("failed to copy part %d: %v", i, err)
         }
+        if written != partSize {
+            return fmt.Errorf("part %d copy mismatch: wrote %d, expected %d", i, written, partSize)
+        }
+        fmt.Printf("Combined part %d: %d bytes\n", i, written)
+        totalWritten += written
     }
+    fmt.Printf("Total bytes written: %d\n", totalWritten)
     return nil
 }
 

@@ -1,8 +1,9 @@
 package download
 
 import (
-    "fmt"
-    "sync"
+	"fmt"
+	"os"
+	"sync"
 )
 
 func (h *DownloadHandler) Pause() error {
@@ -38,6 +39,37 @@ func (h *DownloadHandler) Resume(d Download) error {
         return fmt.Errorf("Download is not paused")
     }
 
+    // Re-initialize state if needed
+    if h.PartsCount == 0 {
+        // Get content length again
+        _, contentLength, err := h.IsAcceptRangeSupported()
+        if err != nil {
+            h.State.Mutex.Unlock()
+            return fmt.Errorf("failed to get content length: %v", err)
+        }
+
+        h.PartsCount = (contentLength + h.CHUNK_SIZE - 1) / h.CHUNK_SIZE
+        if h.State.Completed == nil {
+            h.State.Completed = make([]bool, h.PartsCount)
+        }
+        h.State.TotalBytes = int64(contentLength)
+    }
+
+    // Validate existing part files
+    for i := 0; i < h.PartsCount; i++ {
+        partFileName := fmt.Sprintf("%s.part%d", h.FilePath, i)
+        if _, err := os.Stat(partFileName); os.IsNotExist(err) {
+            // Create empty file if missing
+            file, err := os.OpenFile(partFileName, os.O_WRONLY|os.O_CREATE, 0644)
+            if err != nil {
+                h.State.Mutex.Unlock()
+                return fmt.Errorf("failed to create missing part file %s: %v", partFileName, err)
+            }
+            file.Close()
+            h.State.Completed[i] = false
+        }
+    }
+
     h.State.IsPaused = false
     h.PauseChan = make(chan struct{})
     incompleteParts := h.prepareResume()
@@ -47,6 +79,43 @@ func (h *DownloadHandler) Resume(d Download) error {
 }
 
 func (h *DownloadHandler) prepareResume() []chunk {
+    // Verify all "completed" parts actually exist with correct size
+    for i := 0; i < h.PartsCount; i++ {
+        if h.State.Completed[i] {
+            partFileName := fmt.Sprintf("%s.part%d", h.FilePath, i)
+            info, err := os.Stat(partFileName)
+            
+            start := i * h.CHUNK_SIZE
+            end := start + h.CHUNK_SIZE
+            if end > int(h.State.TotalBytes) {
+                end = int(h.State.TotalBytes)
+            }
+            expectedSize := end - start
+
+            if err != nil || info.Size() != int64(expectedSize) {
+                fmt.Printf("Part %d marked incomplete: size %d, expected %d\n", i, info.Size(), expectedSize)
+                h.State.Completed[i] = false
+            }
+        }
+    }
+
+    // If no incomplete parts are tracked, reconstruct them from Completed array
+    if len(h.State.IncompleteParts) == 0 {
+        for i := 0; i < h.PartsCount; i++ {
+            if !h.State.Completed[i] {
+                start := i * h.CHUNK_SIZE
+                end := start + h.CHUNK_SIZE
+                if end > int(h.State.TotalBytes) {
+                    end = int(h.State.TotalBytes)
+                }
+                h.State.IncompleteParts = append(h.State.IncompleteParts, chunk{
+                    Start: start,
+                    End:   end - 1,
+                })
+            }
+        }
+    }
+
     incompleteParts := make([]chunk, len(h.State.IncompleteParts))
     copy(incompleteParts, h.State.IncompleteParts)
     h.State.IncompleteParts = make([]chunk, 0)

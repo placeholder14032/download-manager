@@ -100,10 +100,14 @@ func (h *DownloadHandler) worker(id int, jobs <-chan chunk, errChan chan<- error
             return
         default:
             if err := h.downloadWithRanges(chunk.Start, chunk.End); err != nil {
+                fmt.Printf("Worker %d: Failed chunk %d-%d: %v\n", id, chunk.Start, chunk.End, err)
+                h.State.Mutex.Lock()
+                h.State.IncompleteParts = append(h.State.IncompleteParts, chunk) // Requeue failed chunk
+                h.State.Mutex.Unlock()
                 errChan <- fmt.Errorf("worker %d failed: %v", id, err)
-                return
+                continue // Don’t exit, keep processing
             }
-            // Update progress with actual bytes written
+            fmt.Printf("Worker %d: Successfully downloaded chunk %d-%d\n", id, chunk.Start, chunk.End)
             h.State.Mutex.Lock()
             partIndex := chunk.Start / h.CHUNK_SIZE
             if partIndex < len(h.State.Completed) {
@@ -115,6 +119,8 @@ func (h *DownloadHandler) worker(id int, jobs <-chan chunk, errChan chan<- error
             h.State.Mutex.Unlock()
         }
     }
+    fmt.Printf("Worker %d: Exiting normally\n", id)
+    pauseAck <- true
 }
 
 func (h *DownloadHandler) combineParts( contentLength int) error {
