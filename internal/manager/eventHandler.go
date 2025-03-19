@@ -10,7 +10,7 @@ import (
 
 func (m *Manager) handleFailed(dl *download.Download) {
 	dl.Status = download.Failed
-	// TODO call clean up
+	cleanUp(dl.FilePath)
 }
 
 func (m *Manager) handleEvent(e util.Event) {

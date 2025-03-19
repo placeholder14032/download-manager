@@ -3,8 +3,9 @@ package manager
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"path"
-	"time"
+	"path/filepath"
 
 	"github.com/placeholder14032/download-manager/internal/download"
 	"github.com/placeholder14032/download-manager/internal/queue"
@@ -112,6 +113,20 @@ func getDownloadStarted(dl *download.Download, echan chan util.Event) {
 	// and is not blocked
 }
 
+func cleanUp(path string) {
+	// works like the part combiner
+	partFiles, err := filepath.Glob(fmt.Sprintf("%s.part*", path))
+	if err != nil {
+		fmt.Println("cant find parts to clean up for ", path)
+		return
+	}
+	for _, file := range partFiles {
+		if err := os.Remove(file); err != nil {
+			fmt.Printf("Warning: failed to remove part file %s: %v\n", file, err)
+		}
+	}
+}
+
 func (m *Manager) addDownload(qID int64, url string) error {
 	i := m.findQueueIndex(qID)
 	if i == -1 {
@@ -183,8 +198,8 @@ func (m *Manager) retryDownload(dlID int64) error {
 		return fmt.Errorf(DOWNLOAD_IS_NOT_IN_STATE, dlID, "Cancelled or Failed")
 	}
 	dl.Status = download.Retrying // temporary status to stop other threads from meddling with this one even though there might not be any other threads probably
-	dl.Handler.Pause() // effectively this should kill all the workers because
-	// TODO clean up
+	dl.Handler.Pause() // effectively this should kill all the workers because. also if there are non just ignore the returned error
+	cleanUp(dl.FilePath) // cleans residual part files
 	createDefaultHandler(dl)
 	go getDownloadStarted(dl, m.events)
 	return nil
@@ -199,8 +214,8 @@ func (m *Manager) cancelDownload(dlID int64) error {
 	if dl.Status != download.Downloading {
 		return fmt.Errorf(DOWNLOAD_IS_NOT_IN_STATE, dlID, "Downloading")
 	}
-	// TODO tell this handler to stop and delete all files (clean up)
 	dl.Handler.Pause()
+	cleanUp(dl.FilePath)
 	createDefaultHandler(dl)
 	dl.Status = download.Cancelled
 	return nil
