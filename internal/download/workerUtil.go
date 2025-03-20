@@ -12,13 +12,13 @@ func (h *DownloadHandler) worker(id int, jobs <-chan chunk, errChan chan<- error
     for chunk := range jobs {
         select {
 			case <-h.ctx.Done(): // Handle cancellation/pause
-            h.State.Mutex.Lock()
-            h.State.IncompleteParts = append(h.State.IncompleteParts, chunk)
-            h.State.Mutex.Unlock()
-            fmt.Printf("Worker %d paused at chunk %d-%d\n", id, chunk.Start, chunk.End)
-            pauseAck <- true
-            return
-        default: // we should start downloading assigned chunk
+				h.State.Mutex.Lock()
+            	h.State.IncompleteParts = append(h.State.IncompleteParts, chunk)
+            	h.State.Mutex.Unlock()
+            	fmt.Printf("Worker %d paused at chunk %d-%d\n", id, chunk.Start, chunk.End)
+            	return // Exit immediately on cancel
+        default:    // Process the chunk normally
+			// we should start downloading assigned chunk
             partIndex := chunk.Start / h.CHUNK_SIZE // later we will use it for path and stuff
             // try downloadWithrange starting from chunks start till end of the chunk
             if err := h.downloadWithRanges(chunk.Start, chunk.End); err != nil {
@@ -31,7 +31,7 @@ func (h *DownloadHandler) worker(id int, jobs <-chan chunk, errChan chan<- error
                 }
                 h.State.Mutex.Unlock()
                 errChan <- fmt.Errorf("worker %d failed: %v", id, err)
-                continue
+                return // exit on error
             }
 
             fmt.Printf("Worker %d: Successfully downloaded chunk %d-%d\n", id, chunk.Start, chunk.End)
@@ -72,3 +72,25 @@ func (h *DownloadHandler) distributeJobs(jobs chan<- chunk, contentLength int) {
         close(jobs)
     }
 }
+
+func (h *DownloadHandler) startWorkers(jobs <-chan chunk) {
+    var wg sync.WaitGroup
+    errChan := make(chan error, h.WORKERS_COUNT)
+    pauseAck := make(chan bool, h.WORKERS_COUNT)
+
+    for i := 0; i < h.WORKERS_COUNT; i++ {
+        wg.Add(1)
+        go h.worker(i, jobs, errChan, pauseAck, &wg)
+    }
+
+    go func() {
+        wg.Wait()
+        close(errChan)
+        for err := range errChan {
+            if err != nil {
+                fmt.Printf("Worker error after resume: %v\n", err)
+            }
+        }
+    }()
+}
+
