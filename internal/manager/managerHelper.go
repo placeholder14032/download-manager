@@ -144,7 +144,7 @@ func (m *Manager) addDownload(qID int64, url string) error {
 	if i == -1 {
 		return fmt.Errorf("Bad queue id: %d", qID)
 	}
-	dl := createDownload(m.lastUID, url, determineFilePath(m.qs[i].SaveDir, url), 0)
+	dl := createDownload(m.lastUID, url, determineFilePath(m.qs[i].SaveDir, url), m.qs[i].MaxRetries)
 	createDefaultHandler(&dl)
 	m.lastUID++
 	m.qs[i].DownloadLists = append(m.qs[i].DownloadLists, dl)

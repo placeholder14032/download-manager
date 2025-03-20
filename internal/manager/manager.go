@@ -10,6 +10,8 @@ import (
 
 type Manager struct {
 	mu      sync.Mutex // used to protect the following fields
+	// useless mutex probably because almost everything is single threaded
+	// and the others have their own mutexes
 	qs      []queue.Queue
 	lastUID int64
 	lastQID int64
