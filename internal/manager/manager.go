@@ -20,6 +20,7 @@ type Manager struct {
 func (m *Manager) init() {
 	m.qs = make([]queue.Queue, 0)
 	m.lastUID = 1
+	m.lastQID = 1
 	m.events = make(chan util.Event, 10) // making buffer size bigger just to be safe
 }
 

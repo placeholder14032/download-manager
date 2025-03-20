@@ -43,7 +43,8 @@ func determineFilePath(directory string, url string) string {
 	// joins the directory with the filename
 	// if the directory doesn't have the last slash (/) it will usse the parent
 	// because it is seen as a file in that case
-	return path.Join(path.Dir(directory), path.Base(url))
+	return path.Join(directory, path.Base(url))
+	// changed from Path.Dir(Directory) because it might cause problems with omitting the last folder
 }
 
 func createDownload(dlID int64, url string, filePath string, maxRetry int64) download.Download {
@@ -184,6 +185,7 @@ func (m *Manager) resumeDownload(dlID int64) error {
 		dl.Status = download.Downloading
 	} else {
 		fmt.Println("cant resume", err)
+		dl.Status = download.Failed
 	}
 	return err
 }

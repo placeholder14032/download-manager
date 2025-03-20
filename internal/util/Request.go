@@ -1,5 +1,7 @@
 package util
 
+import "strconv"
+
 type RequestType int
 
 const (
@@ -25,6 +27,28 @@ const (
 	GetQueues // pass all of the queues with their downloads
 	GetDownloads // pass all of the downloads
 )
+
+var typeNames = []string{
+	"Add Download",
+	"Start Download",
+	"Pause Download",
+	"Resume Download",
+	"Cancel Download",
+	"Retry Download",
+	"Delete Download",
+	"Add Queue",
+	"Delete Queue",
+	"Edit Queue",
+	"Get Queues",
+	"Get Downlaods",
+}
+
+func (r RequestType) String() string{
+	if 0 <= r && r <= GetDownloads {
+		return typeNames[r]
+	}
+	return strconv.Itoa(int(r))
+}
 
 type Request struct {
 	Type RequestType

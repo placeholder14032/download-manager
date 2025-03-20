@@ -7,6 +7,14 @@ const (
 	FAIL
 )
 
+func (r ResponseType) String() string {
+	if r == OK {
+		return "OK"
+	} else {
+		return "FAIL"
+	}
+}
+
 type Response struct {
 	Type ResponseType
 	Body any // similar to Requests body
