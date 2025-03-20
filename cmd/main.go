@@ -4,15 +4,16 @@ import(
 	    "github.com/placeholder14032/download-manager/internal/download"
 		"net/http"
 		"fmt"
+		"time"
 )
 
 func main() {
 	 download := download.Download{
-		URL:      "http://ovh.net/files/1Mio.dat",
-        FilePath: "/Users/nazaninsmac/Downloads/1Mio.dat",
+		URL:     "https://releases.ubuntu.com/24.04.1/SHA256SUMS",
+        FilePath: "/Users/nazaninsmac/Downloads/SHA256SUMS",
 	 }
 
-	 download.Handler = *download.NewDownloadHandler(&http.Client{Timeout: 0}, 1024*1024, 8, 0)
+	 download.Handler = *download.NewDownloadHandler(&http.Client{Timeout: 10 * time.Second}, 1024*1024, 3, 0)
     handler := &download.Handler
 
 	fmt.Printf("Starting download from: %s\n", download.URL)
