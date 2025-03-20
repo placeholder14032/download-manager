@@ -86,7 +86,7 @@ func askEditQueue() util.Request {
 	fmt.Print("please enter the queue id: ")
 	fmt.Scanf("%d", &body.ID)
 	fmt.Print("please enter the save directory: ")
-	fmt.Scanf("%%s", &body.Directory)
+	fmt.Scanf("%s", &body.Directory)
 	fmt.Print("please enter the max number of retries: ")
 	fmt.Scanf("%d", &body.MaxRetries)
 	fmt.Print("please enter the max bandwidth (in bytes per second): ")
@@ -94,9 +94,19 @@ func askEditQueue() util.Request {
 	fmt.Print("please enter the max number of concurrent downloads: ")
 	fmt.Scanf("%d", &body.MaxSimul)
 	//
-	body.TimeRange.Start = readTime("please enter the start of active time range (format %s): ", DEFAULT_START_TIME)
-	body.TimeRange.End = readTime("please enter the start of active time range (format %s): ", DEFAULT_END_TIME)
+	fmt.Print("does this queue have time constraint? [y/n] ")
+	var tmps string
+	fmt.Scanf("%s", &tmps)
+	if tmps == "y" {
+		body.HasTimeConstraint = true
+		body.TimeRange.Start = readTime("please enter the start of active time range (format %s): ", DEFAULT_START_TIME)
+		body.TimeRange.End = readTime("please enter the start of active time range (format %s): ", DEFAULT_END_TIME)
 
+	} else {
+		body.HasTimeConstraint = false
+		body.TimeRange.Start = DEFAULT_START_TIME
+		body.TimeRange.End = DEFAULT_END_TIME
+	}
 	return util.Request{
 		Type: util.EditQueue,
 		Body: body,

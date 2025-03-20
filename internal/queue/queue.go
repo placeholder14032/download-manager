@@ -18,9 +18,11 @@ type Queue struct{
 	SaveDir string
 	MaxConcurrent int64
 	MaxBandwidth int64
+	MaxRetries int64
 	HasTimeConstraint bool
 	TimeRange TimeRange
-	MaxRetries int64
+	// state management
+	Disabled bool // for time management
 }
 
 func (q *Queue) Init(ID int64) {
@@ -31,5 +33,6 @@ func (q *Queue) Init(ID int64) {
 	q.HasTimeConstraint = false
 	q.TimeRange = TimeRange{time.Time{}, time.Time{}}
 	q.MaxRetries = 1
+	q.Disabled = false
 }
 

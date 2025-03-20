@@ -2,6 +2,7 @@ package manager
 
 import (
 	"sync"
+	"time"
 
 	"github.com/placeholder14032/download-manager/internal/queue"
 	"github.com/placeholder14032/download-manager/internal/util"
@@ -36,6 +37,8 @@ func (m *Manager) Start(req chan util.Request, resps chan util.Response) {
 	// start downloading unpaused downloads
 	// load json
 	m.loadJson()
+	// creating a timer to check stuff on a frequent basis
+	minTimer := time.NewTicker(time.Minute) // ticks every minute
 	// starting the main loop handling events and occasionally checking the whole state of things
 	for {
 		select {
@@ -43,6 +46,8 @@ func (m *Manager) Start(req chan util.Request, resps chan util.Response) {
 			m.handleEvent(e)
 		case r := <- req:
 			m.answerRequest(r)
+		case <- minTimer.C:
+			m.checkQueueTimes()
 		}
 	}
 }

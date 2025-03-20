@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"time"
 
 	"github.com/placeholder14032/download-manager/internal/download"
 	"github.com/placeholder14032/download-manager/internal/queue"
@@ -95,10 +96,10 @@ func checkRunningDLsInQueue(q queue.Queue) bool {
 	// checks if any downloads are running to stop queue modification
 	for _, dl := range q.DownloadLists {
 		if checkRunningDL(dl) {
-			return false
+			return true 
 		}
 	}
-	return true
+	return false
 }
 
 func getDownloadStarted(dl *download.Download, echan chan util.Event) {
@@ -126,6 +127,15 @@ func cleanUp(path string) {
 			fmt.Printf("Warning: failed to remove part file %s: %v\n", file, err)
 		}
 	}
+}
+
+func checkTimeInRange(start, end, check time.Time) bool {
+	return check.After(start) && check.Before(end)
+}
+
+func checkNowInRange(start, end time.Time) bool {
+	now, _ := time.Parse(time.TimeOnly, time.Now().Format(time.TimeOnly))
+	return checkTimeInRange(start, end, now)
 }
 
 func (m *Manager) addDownload(qID int64, url string) error {
@@ -261,9 +271,11 @@ func (m *Manager) editQueue(body util.QueueBody) error {
 		return fmt.Errorf(DOWNLOADS_ARE_RUNNING, qid)
 	}
 	m.qs[i].SaveDir = body.Directory
+	m.qs[i].Name = body.Name
 	m.qs[i].MaxConcurrent = body.MaxSimul
 	m.qs[i].MaxBandwidth = body.MaxBandWidth
 	m.qs[i].MaxRetries = body.MaxRetries
+	m.qs[i].HasTimeConstraint = body.HasTimeConstraint
 	m.qs[i].TimeRange = body.TimeRange
 	return nil
 }
@@ -289,5 +301,50 @@ func (m *Manager) answerBadRequest(msg string) {
 func (m *Manager) answerOKRequest() {
 	resp := util.Response{Type: util.OK, Body: nil}
 	m.resps <- resp
+}
+
+func (m *Manager) disableQueue(idx int) {
+	m.qs[idx].Disabled = true
+	fmt.Println("disabling queue", m.qs[idx].ID, time.Now())
+	for _, dl := range m.qs[idx].DownloadLists {
+		m.pauseDownload(dl.ID) // this is O(n^2) but at this point I dont really care
+	}
+}
+
+func (m *Manager) enableQueue(idx int) {
+	m.qs[idx].Disabled = false
+	q := &m.qs[idx]
+	fmt.Println("enabling queue", q.ID, time.Now())
+	ln := len(q.DownloadLists)
+	mx := q.MaxConcurrent
+	if mx == 0 {
+		mx = int64(ln)
+	}
+	ecnt := int64(0)
+	for i := 0; ecnt < mx && i < ln; i++ {
+		dl := &q.DownloadLists[i]
+		if dl.Status == download.Pending {
+			m.startDownload(dl.ID)
+		}
+		if dl.Status == download.Paused {
+			m.resumeDownload(dl.ID)
+		}
+	}
+}
+
+func (m *Manager) checkQueueTimes() {
+	for i := range m.qs {
+		q := &m.qs[i]
+		if !q.HasTimeConstraint {
+			continue
+		}
+		inRange := checkNowInRange(q.TimeRange.Start, q.TimeRange.End)
+		//
+		if inRange && q.Disabled {
+			m.enableQueue(i)
+		} else if !inRange && !q.Disabled {
+			m.disableQueue(i)
+		}
+	}
 }
 

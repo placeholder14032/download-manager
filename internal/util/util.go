@@ -20,9 +20,11 @@ type QueueBody struct {
 	//
 	ID int64 // optional. can be -1 meaning to add a new one. otherwise do something with it
 	Directory string
+	Name string // queues name? might be optional
 	MaxSimul int64
 	MaxBandWidth int64
 	MaxRetries int64
+	HasTimeConstraint bool
 	TimeRange queue.TimeRange
 }
 
