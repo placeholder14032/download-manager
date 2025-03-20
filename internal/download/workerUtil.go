@@ -15,8 +15,17 @@ func (h *DownloadHandler) worker(id int, jobs <-chan chunk, errChan chan<- error
 				h.State.Mutex.Lock()
             	h.State.IncompleteParts = append(h.State.IncompleteParts, chunk)
             	h.State.Mutex.Unlock()
-            	fmt.Printf("Worker %d paused at chunk %d-%d\n", id, chunk.Start, chunk.End)
-            	return // Exit immediately on cancel
+				fmt.Printf("Worker %d paused at chunk %d-%d\n", id, chunk.Start, chunk.End)
+				pauseAck <- true
+				return // Exit immediately on cancel
+			case <-h.PauseChan:
+				h.State.Mutex.Lock()
+				h.State.IncompleteParts = append(h.State.IncompleteParts, chunk)
+				h.State.Mutex.Unlock()
+				fmt.Printf("Worker %d paused at chunk %d-%d\n", id, chunk.Start, chunk.End)
+				pauseAck <- true
+				<-h.ResumeChan // Wait for resume signal
+				continue       // Reprocess this chunk after resume
         default:    // Process the chunk normally
 			// we should start downloading assigned chunk
             partIndex := chunk.Start / h.CHUNK_SIZE // later we will use it for path and stuff
@@ -71,26 +80,5 @@ func (h *DownloadHandler) distributeJobs(jobs chan<- chunk, contentLength int) {
 	if currentByte >= int64(contentLength) {
         close(jobs)
     }
-}
-
-func (h *DownloadHandler) startWorkers(jobs <-chan chunk) {
-    var wg sync.WaitGroup
-    errChan := make(chan error, h.WORKERS_COUNT)
-    pauseAck := make(chan bool, h.WORKERS_COUNT)
-
-    for i := 0; i < h.WORKERS_COUNT; i++ {
-        wg.Add(1)
-        go h.worker(i, jobs, errChan, pauseAck, &wg)
-    }
-
-    go func() {
-        wg.Wait()
-        close(errChan)
-        for err := range errChan {
-            if err != nil {
-                fmt.Printf("Worker error after resume: %v\n", err)
-            }
-        }
-    }()
 }
 
