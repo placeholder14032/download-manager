@@ -63,25 +63,18 @@ func (download *Download) NewDownloadHandler(client *http.Client, chunkSize int6
 func (h *DownloadHandler) StartDownloading() error {
 	// First, we will check if the server supports range requests or not -> using our IsAcceptRangeSupported() method
     supportsRange, contentLength, err := h.IsAcceptRangeSupported()
-
-	// fmt.Print(supportsRange)
-	// fmt.Print("hereeeeee")
     if err != nil {
         return err
     }
-    // h.Progress.TotalBytes = int64(contentLength)
 
 	// If the server does not support range requests, we will download the file without using range requests
     if (!supportsRange) {
         return h.downloadWithoutRanges()
     }
 
-
     h.PartsCount = (contentLength + h.CHUNK_SIZE - 1) / h.CHUNK_SIZE
     h.State.Completed = make([]bool, h.PartsCount)
     h.State.TotalBytes = int64(contentLength)
-
-
 
     // jobs: it's a channel used to send chunks to worker "task to download a specific piece (or "chunk")""
     jobs := make(chan chunk, h.WORKERS_COUNT)    // sends chunk information to workers
@@ -96,21 +89,34 @@ func (h *DownloadHandler) StartDownloading() error {
         go h.worker(i, jobs, errChan, pauseAck, &wg)
     }
 
-    h.startWorkers( &wg, jobs, errChan, pauseAck)
 	go func() {
 		h.distributeJobs(jobs, int(contentLength))
 		close(jobs) // close jobs channel after all tasks are sent 
 	}()
+
     go h.waitForCompletion(&wg, errChan, done)
 
 
-    select {
-    case <-done:
-        fmt.Print("case done in select startibg download")
-        return h.handleDownloadCompletion(contentLength, errChan, done)
-    case err := <-errChan:
-        return err
+	<-done
+
+	close(errChan) // Ensure channel is closed
+    for err := range errChan {
+        if err != nil {
+            return err
+        }
     }
+
+    // If we get here, download was successful, so handle completion
+    return h.handleDownloadCompletion(contentLength, errChan, done)
+
+    // select {
+    // case <-done:
+    //     fmt.Print("case done in select startibg download")
+    //     return h.handleDownloadCompletion(contentLength, errChan, done)
+    // case err := <-errChan:
+	// 	fmt.Println("Error in select case: ", err)
+    //     return err
+    // }
 }
 
 
@@ -180,6 +186,7 @@ func (h *DownloadHandler) downloadWithRanges(start int64, end int64) error {
     if err != nil {
         return fmt.Errorf("failed to create part file %s: %v", partFileName, err)
     }
+	defer file.Close()
 
     // now we will use a custom reader to count actual bytes read from the response -> make sure we are reading and writing all bytes
 	var totalRead int64

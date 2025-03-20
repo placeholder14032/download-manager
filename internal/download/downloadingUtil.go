@@ -42,7 +42,6 @@ func (h *DownloadHandler) IsAcceptRangeSupported() (bool, int64, error) {
     return false, resp.ContentLength, nil
 }
 
-
 // Custom reader to ensure we are reading bytes properly
 type countingReader struct {
     reader io.Reader
@@ -57,25 +56,29 @@ func (r *countingReader) Read(p []byte) (n int, err error) {
 
 
 func (h *DownloadHandler) waitForCompletion(wg *sync.WaitGroup, errChan chan<- error, done chan<- bool) {
+    fmt.Println("Waiting for all workers to complete...")
     wg.Wait()
-    close(errChan)
+    fmt.Println("Workers completed, sending done signal...")
     done <- true
+    close(done)
 }
 
 func (h *DownloadHandler) handleDownloadCompletion(contentLength int64, errChan <-chan error, done <-chan bool) error {
-    fmt.Print("print statemant at the begining of handle compeletation -------------------------------------------------------------")
-    select {
-    case err := <-errChan:
+    
+    // fmt.Println("Waiting for done signal...")
+    <-done  // block until `done` is closed
+    // fmt.Println("Done signal received, proceeding with combineParts")
+
+    for err := range errChan {
         if err != nil {
+            fmt.Println("Error in handleDownloadCompletion:", err)
             return err
         }
-        if !h.State.IsPaused {
-            return h.combineParts( contentLength)
-        }
-        return nil
-    case <-done:
-        return h.combineParts( contentLength)
     }
+
+
+    fmt.Println("Calling combineParts")
+    return h.combineParts(contentLength)
 }
 
 func (h *DownloadHandler) combineParts( contentLength int64) error {

@@ -43,8 +43,9 @@ func (h *DownloadHandler) worker(id int, jobs <-chan chunk, errChan chan<- error
                 }
                 h.State.Mutex.Unlock()
                 errChan <- fmt.Errorf("worker %d failed: %v", id, err)
-                continue // Don’t exit, keep processing
+                continue
             }
+
             fmt.Printf("Worker %d: Successfully downloaded chunk %d-%d\n", id, chunk.Start, chunk.End)
             h.State.Mutex.Lock()
             if int(partIndex) < len(h.State.Completed) {
@@ -56,21 +57,12 @@ func (h *DownloadHandler) worker(id int, jobs <-chan chunk, errChan chan<- error
             h.State.Mutex.Unlock()
         }
     }
-    fmt.Printf("Worker %d: Exiting normally\n", id)
-    pauseAck <- true
-}
-
-func (h *DownloadHandler) startWorkers( wg *sync.WaitGroup, jobs <-chan chunk, errChan chan<- error, pauseAck chan<- bool) {
-    for i := 0; i < h.WORKERS_COUNT; i++ {
-        wg.Add(1)
-        go h.worker(i, jobs, errChan, pauseAck, wg)
-    }
+	fmt.Printf("Worker %d: Finished task\n", id)
+    // pauseAck <- true
 }
 
 func (h *DownloadHandler) distributeJobs(jobs chan<- chunk, contentLength int) {
-    defer close(jobs)
     currentByte := h.State.CurrentByte
-
     for currentByte < int64(contentLength) {
         // // Check pause state first
         // h.State.Mutex.Lock()
@@ -89,19 +81,10 @@ func (h *DownloadHandler) distributeJobs(jobs chan<- chunk, contentLength int) {
 
         // defining the chunk
         chunk := chunk{Start: currentByte, End: end - 1}
+
+		jobs <- chunk
+		fmt.Printf("Dispatched chunk %d-%d\n", chunk.Start, chunk.End)
+		currentByte = end
         
-        select {
-        // case <-h.PauseChan:
-        //     h.State.Mutex.Lock()
-        //     h.State.CurrentByte = currentByte
-        //     h.State.IncompleteParts = append(h.State.IncompleteParts, chunk)
-        //     h.State.Mutex.Unlock()
-        //     fmt.Printf("Distributor paused at byte %d\n", currentByte)
-        //     return
-        // ------------------------------------------------------------------
-        case jobs <- chunk:
-            currentByte = end
-            fmt.Printf("Dispatched chunk %d-%d\n", chunk.Start, chunk.End)
-        }
     }
 }

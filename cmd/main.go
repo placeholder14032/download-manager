@@ -9,11 +9,11 @@ import(
 
 func main() {
 	 download := download.Download{
-		URL:     "https://releases.ubuntu.com/24.04.1/SHA256SUMS",
-        FilePath: "/Users/nazaninsmac/Downloads/SHA256SUMS",
+		URL:           "https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4",
+		FilePath:      "/Users/nazaninsmac/Downloads/big_buck_bunny_1mb.mp4",
 	 }
 
-	 download.Handler = *download.NewDownloadHandler(&http.Client{Timeout: 10 * time.Second}, 1024*1024, 3, 0)
+	 download.Handler = *download.NewDownloadHandler(&http.Client{Timeout: 10 * time.Second}, 256 * 1024, 5, 0)
     handler := &download.Handler
 
 	fmt.Printf("Starting download from: %s\n", download.URL)
