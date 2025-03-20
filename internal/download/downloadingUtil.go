@@ -82,6 +82,6 @@ func (h *DownloadHandler) handleDownloadCompletion(contentLength int64, errChan 
 }
 
 func (h *DownloadHandler) combineParts( contentLength int64) error {
-    c :=  NewPartsCombiner()
+    c :=  NewPartsCombiner(contentLength,int(h.PartsCount),h.CHUNK_SIZE)
     return c.CombineParts(h.FilePath, contentLength, int(h.PartsCount))
 }
