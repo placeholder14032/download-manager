@@ -18,6 +18,7 @@ const (
 	DOWNLOAD_IS_NOT_IN_STATE = "download with id %d is not in state: %s"
 	DOWNLOAD_IS_RUNNING = "download with id %d is still running"
 	DOWNLOADS_ARE_RUNNING = "downloads are running in queueu: %d: can not modify"
+	QUEUE_IS_FULL = "Queue with id %d is full and cant run anymore download until the others are finished"
 )
 
 func (m *Manager) findQueueIndex(qID int64) int { // maybe can be used to clean up some dublicate code
@@ -159,6 +160,9 @@ func (m *Manager) startDownload(dlID int64) error {
 	if dl.Status != download.Pending {
 		return fmt.Errorf(DOWNLOAD_IS_NOT_IN_STATE, dlID, "Pending")
 	}
+	if !m.qs[i].IsSafeToRunDL() {
+		return fmt.Errorf(QUEUE_IS_FULL, m.qs[i].ID)
+	}
 	go getDownloadStarted(dl, m.events)
 	return nil
 }
@@ -190,6 +194,9 @@ func (m *Manager) resumeDownload(dlID int64) error {
 	if dl.Status != download.Paused {
 		return fmt.Errorf(DOWNLOAD_IS_NOT_IN_STATE, dlID, "Downloading")
 	}
+	if !m.qs[i].IsSafeToRunDL() {
+		return fmt.Errorf(QUEUE_IS_FULL, m.qs[i].ID)
+	}
 	err := dl.Handler.Resume(*dl) // returns error or nil
 	if err == nil {
 		dl.Status = download.Downloading
@@ -208,6 +215,9 @@ func (m *Manager) retryDownload(dlID int64) error {
 	dl := &m.qs[i].DownloadLists[j] // not a copy
 	if dl.Status != download.Cancelled && dl.Status != download.Failed {
 		return fmt.Errorf(DOWNLOAD_IS_NOT_IN_STATE, dlID, "Cancelled or Failed")
+	}
+	if !m.qs[i].IsSafeToRunDL() {
+		return fmt.Errorf(QUEUE_IS_FULL, m.qs[i].ID)
 	}
 	dl.Status = download.Retrying // temporary status to stop other threads from meddling with this one even though there might not be any other threads probably
 	dl.Handler.Pause() // effectively this should kill all the workers because. also if there are non just ignore the returned error

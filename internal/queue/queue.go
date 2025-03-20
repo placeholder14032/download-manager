@@ -25,6 +25,20 @@ type Queue struct{
 	Disabled bool // for time management
 }
 
+func (q *Queue) countActiveDownloads() (cnt int) {
+	cnt = 0
+	for _, dl := range q.DownloadLists {
+		if dl.Status == download.Downloading {
+			cnt++
+		}
+	}
+	return
+}
+
+func (q *Queue) IsSafeToRunDL() bool {
+	return q.countActiveDownloads() < int(q.MaxConcurrent)
+}
+
 func (q *Queue) Init(ID int64) {
 	q.ID = ID
 	q.DownloadLists = make([]download.Download, 0)
