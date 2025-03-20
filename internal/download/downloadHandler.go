@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"context"
 	"time"
 )
 
@@ -14,16 +15,15 @@ type DownloadHandler struct {
     CHUNK_SIZE    int64
     WORKERS_COUNT int
     PartsCount    int64
-    PauseChan     chan struct{} 
-
-    DELTA         time.Duration
-    // Progress      *ProgressTracker
 
     URL           string
     FilePath      string
     State         *DownloadState
-    BandWidth     int64
-    IsBandWidthLimited bool
+
+	ctx           context.Context    // Add context
+    cancel        context.CancelFunc // Add cancel function
+    PauseChan     chan struct{}      // Keep this for signaling pause
+    ResumeChan    chan struct{}      // Add channel for resume
 }
 
 type DownloadState struct {
@@ -33,7 +33,6 @@ type DownloadState struct {
     TotalBytes      int64
     Mutex           sync.Mutex
     IsPaused        bool
-    isCombined      bool   
 }
 
 type chunk struct {
@@ -43,18 +42,19 @@ type chunk struct {
 
 // Initializing 
 func (download *Download) NewDownloadHandler(client *http.Client, chunkSize int64, workersCount int, bandsWidth int64) *DownloadHandler {
+	ctx, cancel := context.WithCancel(context.Background())
     dh := &DownloadHandler{
         Client:            client,
         CHUNK_SIZE:        chunkSize,
         WORKERS_COUNT:     workersCount,
-        PauseChan:        make(chan struct{}),
         URL:              download.URL,
         FilePath:         download.FilePath,
-        DELTA:            time.Second,
-        // Progress:         NewProgressTracker(0, time.Second),
         State:            &DownloadState{}, 
-        // BandWidth:        bandsWidth,
-        // IsBandWidthLimited: bandsWidth > 0,
+
+		PauseChan:     make(chan struct{}),
+        ResumeChan:    make(chan struct{}),
+		ctx:           ctx,
+        cancel:        cancel,
     }
     return dh
 }
@@ -91,34 +91,34 @@ func (h *DownloadHandler) StartDownloading() error {
 
 	go func() {
 		h.distributeJobs(jobs, int(contentLength))
-		close(jobs) // close jobs channel after all tasks are sent 
+		// close(jobs) // close jobs channel after all tasks are sent 
 	}()
 
-    go h.waitForCompletion(&wg, errChan, done)
-
-
-	<-done
-
-	close(errChan) // Ensure channel is closed
-    for err := range errChan {
-        if err != nil {
-            return err
+	// waiting for workers to be done
+	go func() {
+        wg.Wait()
+        h.State.Mutex.Lock()
+        if h.State.CurrentByte >= h.State.TotalBytes {
+            done <- true
         }
+        h.State.Mutex.Unlock()
+    }()
+
+	select {
+    case <-done:
+        close(errChan)
+        for err := range errChan {
+            if err != nil {
+                return err
+            }
+        }
+        fmt.Println("Calling combineParts")
+        return h.combineParts(contentLength)
+    case err := <-errChan:
+		close(jobs)
+        return err
     }
-
-    // If we get here, download was successful, so handle completion
-    return h.handleDownloadCompletion(contentLength, errChan, done)
-
-    // select {
-    // case <-done:
-    //     fmt.Print("case done in select startibg download")
-    //     return h.handleDownloadCompletion(contentLength, errChan, done)
-    // case err := <-errChan:
-	// 	fmt.Println("Error in select case: ", err)
-    //     return err
-    // }
 }
-
 
 func (h *DownloadHandler) downloadWithoutRanges() error {
     req, err := http.NewRequest("GET",h.URL, nil)
@@ -155,6 +155,7 @@ func (h *DownloadHandler) downloadWithRanges(start int64, end int64) error {
 	expectedSize := end - start + 1
     partNumber := start / h.CHUNK_SIZE
     partFileName := fmt.Sprintf("%s.part%d", h.FilePath, partNumber)
+    fmt.Printf("Worker starting download for chunk %d-%d at %s\n", start, end, time.Now().Format(time.RFC3339))
 
 
 	// creating request for server

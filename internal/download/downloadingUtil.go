@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strings"
     "io"
-    "sync"
 )
 
 func (h *DownloadHandler) IsAcceptRangeSupported() (bool, int64, error) {
@@ -54,15 +53,6 @@ func (r *countingReader) Read(p []byte) (n int, err error) {
     return n, err
 }
 
-
-func (h *DownloadHandler) waitForCompletion(wg *sync.WaitGroup, errChan chan<- error, done chan<- bool) {
-    fmt.Println("Waiting for all workers to complete...")
-    wg.Wait()
-    fmt.Println("Workers completed, sending done signal...")
-    done <- true
-    close(done)
-}
-
 func (h *DownloadHandler) handleDownloadCompletion(contentLength int64, errChan <-chan error, done <-chan bool) error {
     
     // fmt.Println("Waiting for done signal...")
@@ -75,7 +65,9 @@ func (h *DownloadHandler) handleDownloadCompletion(contentLength int64, errChan 
             return err
         }
     }
-
+    if h.State.CurrentByte < h.State.TotalBytes {
+        return fmt.Errorf("download incomplete: got %d/%d bytes", h.State.CurrentByte, h.State.TotalBytes)
+    }
 
     fmt.Println("Calling combineParts")
     return h.combineParts(contentLength)
