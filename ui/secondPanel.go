@@ -97,6 +97,9 @@ func DrawAllDownloads(app *tview.Application) {
 	allDownloadTable.SetSelectedStyle(tcell.StyleDefault.Background(tcell.ColorBlue))
 
 	allDownloadTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if len(allDownloads) == 0 {
+			return event
+		}
 		row, _ := allDownloadTable.GetSelection()
 		tempDownload := allDownloads[row-1]
 		switch event.Key() {
