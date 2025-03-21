@@ -61,7 +61,7 @@ type Request struct {
 type BodyAddDownload struct {
 	URL string
 	QueueID int64
-	FilePath string // can be empty and I dunno maybe get it from the url
+	FileName string // can be empty and I dunno maybe get it from the url
 }
 
 type BodyModDownload struct {
