@@ -2,7 +2,6 @@ package manager
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -58,11 +57,6 @@ func createDownload(dlID int64, url string, filePath string, maxRetry int64) dow
 		Status: download.Pending,
 		RetryCount: 0,
 	}
-}
-
-func createDefaultHandler(d *download.Download) {
-	d.Handler = *d.NewDownloadHandler(&http.Client{Timeout: 0}, CHUNK_SIZE, 8, 0)
-	// TODO check bandwidth limit because its buggy
 }
 
 // this takes in a pointer just so we dont have dangling copies of everything
@@ -145,7 +139,7 @@ func (m *Manager) addDownload(qID int64, url string) error {
 		return fmt.Errorf("Bad queue id: %d", qID)
 	}
 	dl := createDownload(m.lastUID, url, determineFilePath(m.qs[i].SaveDir, url), m.qs[i].MaxRetries)
-	createDefaultHandler(&dl)
+	download.CreateDefaultHandler(&dl)
 	m.lastUID++
 	m.qs[i].DownloadLists = append(m.qs[i].DownloadLists, dl)
 	return nil
@@ -222,7 +216,7 @@ func (m *Manager) retryDownload(dlID int64) error {
 	dl.Status = download.Retrying // temporary status to stop other threads from meddling with this one even though there might not be any other threads probably
 	dl.Handler.Pause() // effectively this should kill all the workers because. also if there are non just ignore the returned error
 	cleanUp(dl.FilePath) // cleans residual part files
-	createDefaultHandler(dl)
+	download.CreateDefaultHandler(dl)
 	go getDownloadStarted(dl, m.events)
 	return nil
 }
@@ -238,7 +232,7 @@ func (m *Manager) cancelDownload(dlID int64) error {
 	}
 	dl.Handler.Pause()
 	cleanUp(dl.FilePath)
-	createDefaultHandler(dl)
+	download.CreateDefaultHandler(dl)
 	dl.Status = download.Cancelled
 	return nil
 }

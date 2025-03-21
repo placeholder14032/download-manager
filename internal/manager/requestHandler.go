@@ -7,7 +7,6 @@ import (
 )
 
 const (
-	CHUNK_SIZE = 1024 * 1024 // 1mb chunks
 	BAD_REQ_BODY_TYPE = "bad request: type is %s but body is not of type %s"
 )
 
@@ -158,8 +157,6 @@ func (m *Manager) answerDelQ(r util.Request) {
 }
 
 func (m *Manager) answerRequest(r util.Request) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	switch r.Type {
 	case util.AddDownload:
 		m.answerAddDL(r)
