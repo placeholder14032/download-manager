@@ -134,6 +134,7 @@ func DrawAllDownloads(app *tview.Application) {
 		case tcell.KeyCtrlD:
 			if editMode {
 				controller.ModDownload(util.DeleteDownload, tempDownload.ID)
+				DrawAllDownloads(app)
 				return nil
 			}
 		case tcell.KeyCtrlC: // check for status ??
