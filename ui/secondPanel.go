@@ -6,24 +6,12 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
+	"github.com/placeholder14032/download-manager/internal/controller"
 	"github.com/placeholder14032/download-manager/internal/download"
+	"github.com/placeholder14032/download-manager/internal/util"
 )
 
 var allDownloadFlex *tview.Flex
-
-// temporary struct just so i can draw the table :)))
-
-type DownloadBody struct {
-	ID       int64
-	URL      string
-	FliePath string
-	Status   download.State
-	Progress int64
-	Speed    int64
-	// added now (should be added to the original DOwnalodBody)
-	DownloadName string
-	QueueName    string
-}
 
 func DrawAllDownloads(app *tview.Application) {
 	// while true (call the function for the array of all Download bodies -> wait for the answer -> get the answer
@@ -68,25 +56,30 @@ func DrawAllDownloads(app *tview.Application) {
 		allDownloadTable.SetCell(0, i, tempTableCell)
 	}
 
-	allDownloads := []DownloadBody{
-		{URL: "https://example.com/file1.zip", Status: download.Paused, Progress: 0, Speed: 0, DownloadName: "name1", QueueName: "moz"},
-		{URL: "https://example.com/file2.iso", Status: download.Done, Progress: 0, Speed: 0, DownloadName: "name2", QueueName: "khiar"},
-		//{URL: "https://example.com/file3.pdf", Status: download.Starting, Progress: 0, Speed: 0, DownloadName: "name3", QueueName: "porteghal"},
-		{URL: "https://example.com/file4.mp4", Status: download.Retrying, Progress: 0, Speed: 0, DownloadName: "name4", QueueName: "sib"},
-	}
+	allDownloads := controller.GetAllDownloads()
 
 	for i, download := range allDownloads {
-		downloadNameCell := tview.NewTableCell(download.DownloadName).SetSelectable(true)
+		var downloadNameCell, URLCell *tview.TableCell
+		if len(download.FilePath) < 20 {
+			downloadNameCell = tview.NewTableCell(download.FilePath).SetSelectable(true).SetExpansion(1)
+		} else {
+			downloadNameCell = tview.NewTableCell(download.FilePath[:20]).SetSelectable(false).SetExpansion(1)
+		}
 		allDownloadTable.SetCell(i+1, 0, downloadNameCell)
-		URLCell := tview.NewTableCell(download.URL).SetSelectable(false)
+		if len(download.URL) < 20 {
+			URLCell = tview.NewTableCell(download.URL).SetSelectable(false).SetExpansion(1)
+		} else {
+			URLCell = tview.NewTableCell(download.URL[:20]).SetSelectable(false).SetExpansion(1)
+		}
 		allDownloadTable.SetCell(i+1, 1, URLCell)
-		queueNameCell := tview.NewTableCell(download.QueueName).SetSelectable(false)
-		allDownloadTable.SetCell(i+1, 2, queueNameCell)
-		statusCell := tview.NewTableCell(convertStateToString(download.Status)).SetSelectable(false)
+		// adding queue name
+		//queueNameCell := tview.NewTableCell(download.).SetSelectable(false)
+		//allDownloadTable.SetCell(i+1, 2, queueNameCell)
+		statusCell := tview.NewTableCell(convertStateToString(download.Status)).SetSelectable(false).SetExpansion(1)
 		allDownloadTable.SetCell(i+1, 3, statusCell)
-		progressCell := tview.NewTableCell(strconv.FormatInt(download.Progress, 10)).SetSelectable(false)
+		progressCell := tview.NewTableCell(strconv.FormatFloat(download.Progress, 'f', 2, 64)).SetSelectable(false).SetExpansion(1)
 		allDownloadTable.SetCell(i+1, 4, progressCell)
-		speedCell := tview.NewTableCell(strconv.FormatInt(download.Speed, 10)).SetSelectable(false)
+		speedCell := tview.NewTableCell(download.Speed).SetSelectable(false).SetExpansion(1)
 		allDownloadTable.SetCell(i+1, 5, speedCell)
 	}
 
@@ -104,8 +97,8 @@ func DrawAllDownloads(app *tview.Application) {
 	allDownloadTable.SetSelectedStyle(tcell.StyleDefault.Background(tcell.ColorBlue))
 
 	allDownloadTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		// row, _ := allDownloadTable.GetSelection() -> commented because not used
-		// download = allDownloads[row-1] -> commented because not used
+		row, _ := allDownloadTable.GetSelection()
+		tempDownload := allDownloads[row-1]
 		switch event.Key() {
 		case tcell.KeyCtrlE:
 			editMode = !editMode
@@ -117,23 +110,28 @@ func DrawAllDownloads(app *tview.Application) {
 			return nil
 		case tcell.KeyCtrlR:
 			if editMode {
-				//retry
-				app.Stop()
+				if tempDownload.Status == download.Cancelled {
+					controller.ModDownload(util.RetryDownload, tempDownload.ID)
+				}
 				return nil
 			}
 		case tcell.KeyCtrlS:
 			if editMode {
-				// start/stop
+				if tempDownload.Status == download.Paused {
+					controller.ModDownload(util.ResumeDownload, selectedQueue.ID)
+				} else if tempDownload.Status == download.Downloading {
+					controller.ModDownload(util.PauseDownload, tempDownload.ID)
+				}
 				return nil
 			}
 		case tcell.KeyCtrlD:
 			if editMode {
-				// delete
+				controller.ModDownload(util.DeleteDownload, tempDownload.ID)
 				return nil
 			}
-		case tcell.KeyCtrlC: //?
+		case tcell.KeyCtrlC: // check for status ??
 			if editMode {
-				// cancle
+				controller.ModDownload(util.CancelDownload, tempDownload.ID)
 				return nil
 			}
 		}
@@ -146,7 +144,7 @@ func DrawAllDownloads(app *tview.Application) {
 
 func convertStateToString(state download.State) string {
 	states := []string{
-		"Pendoing",
+		"Pending",
 		"Downloading",
 		"Paused",
 		"Cancelled",
