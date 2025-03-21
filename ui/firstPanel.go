@@ -47,7 +47,7 @@ func DrawNewDownloadPage(app *tview.Application) {
 
 	allQueues := controller.GetQueues()
 	if len(allQueues) == 0 {
-		errorView += "No Queues Available! ** "
+		errorView = "No Queues Available! ** "
 	}
 	var allQueueNames []string
 	for _, q := range allQueues {
