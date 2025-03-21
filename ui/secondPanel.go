@@ -2,6 +2,7 @@ package ui
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -59,7 +60,7 @@ func DrawAllDownloads(app *tview.Application) {
 	allDownloads := controller.GetAllDownloads()
 
 	for i, download := range allDownloads {
-		var downloadNameCell, URLCell *tview.TableCell
+		var downloadNameCell, URLCell, queueNameCell *tview.TableCell
 		if len(download.FilePath) < 20 {
 			downloadNameCell = tview.NewTableCell(download.FilePath).SetSelectable(true).SetExpansion(1)
 		} else {
@@ -72,9 +73,12 @@ func DrawAllDownloads(app *tview.Application) {
 			URLCell = tview.NewTableCell(download.URL[:20]).SetSelectable(false).SetExpansion(1)
 		}
 		allDownloadTable.SetCell(i+1, 1, URLCell)
-		// adding queue name
-		//queueNameCell := tview.NewTableCell(download.).SetSelectable(false)
-		//allDownloadTable.SetCell(i+1, 2, queueNameCell)
+		if len(download.QueueName) < 20 {
+			queueNameCell = tview.NewTableCell(download.QueueName).SetSelectable(false).SetExpansion(1)
+		} else {
+			queueNameCell = tview.NewTableCell(download.QueueName[:20]).SetSelectable(false).SetExpansion(1)
+		}
+		allDownloadTable.SetCell(i+1, 2, queueNameCell)
 		statusCell := tview.NewTableCell(convertStateToString(download.Status)).SetSelectable(false).SetExpansion(1)
 		allDownloadTable.SetCell(i+1, 3, statusCell)
 		progressCell := tview.NewTableCell(strconv.FormatFloat(download.Progress, 'f', 2, 64)).SetSelectable(false).SetExpansion(1)
@@ -143,6 +147,19 @@ func DrawAllDownloads(app *tview.Application) {
 
 	app.SetRoot(allDownloadFlex, true).SetFocus(allDownloadTable)
 	StatePanel = "second"
+
+	for {
+		allDownloads := controller.GetAllDownloads()
+		for i, download := range allDownloads {
+			statusCell := tview.NewTableCell(convertStateToString(download.Status)).SetSelectable(false).SetExpansion(1)
+			allDownloadTable.SetCell(i+1, 3, statusCell)
+			progressCell := tview.NewTableCell(strconv.FormatFloat(download.Progress, 'f', 2, 64)).SetSelectable(false).SetExpansion(1)
+			allDownloadTable.SetCell(i+1, 4, progressCell)
+			speedCell := tview.NewTableCell(download.Speed).SetSelectable(false).SetExpansion(1)
+			allDownloadTable.SetCell(i+1, 5, speedCell)
+		}
+		time.Sleep(1 * time.Second)
+	}
 }
 
 func convertStateToString(state download.State) string {
