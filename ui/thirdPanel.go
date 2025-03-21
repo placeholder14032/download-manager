@@ -184,7 +184,7 @@ func drawSelectQueue(app *tview.Application) {
 
 	var selectOptions = tview.NewList()
 	for i, q := range listQueues {
-		selectOptions.AddItem(fmt.Sprintf("> %s", q.Name), "", rune('a'+i), func() {
+		selectOptions.AddItem(fmt.Sprintf("> %s", strconv.FormatInt(q.ID, 32)), "", rune('a'+i), func() {
 			selectedQueue = q
 			drawEditQueue(app)
 		})
@@ -348,7 +348,7 @@ func drawDeleteQueue(app *tview.Application) {
 
 	var selectOptions = tview.NewList()
 	for i, q := range listQueues {
-		selectOptions.AddItem(fmt.Sprintf("> %s", q.Name), "", rune('a'+i), func() {
+		selectOptions.AddItem(fmt.Sprintf("> %s", strconv.FormatInt(q.ID, 32)), "", rune('a'+i), func() {
 			err := controller.DeleteQueue(q.ID)
 			if err != nil {
 				errorView = err.Error()
