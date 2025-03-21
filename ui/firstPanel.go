@@ -1,7 +1,10 @@
 package ui
 
 import (
+	"strconv"
+
 	"github.com/gdamore/tcell/v2"
+	"github.com/placeholder14032/download-manager/internal/controller"
 	"github.com/rivo/tview"
 )
 
@@ -10,6 +13,7 @@ var newDownloadFlex *tview.Flex
 var urlDownload, nameDownload, queueDownload string
 
 func DrawNewDownloadPage(app *tview.Application) {
+	errorView := ""
 	tabHeader := tview.NewFlex().SetDirection(tview.FlexColumn)
 	tab1 := tview.NewTextView().
 		SetText("Tab 1")
@@ -40,13 +44,23 @@ func DrawNewDownloadPage(app *tview.Application) {
 	nameDownloadInput := tview.NewInputField().SetLabel("Name: ").SetFieldBackgroundColor(tcell.ColorBlack)
 	urlDownloadInput := tview.NewInputField().SetLabel("Url: ").SetFieldBackgroundColor(tcell.ColorBlack)
 	var inputFields []*tview.InputField = []*tview.InputField{nameDownloadInput, urlDownloadInput}
+
+	allQueues := controller.GetQueues()
+	if len(allQueues) == 0 {
+		errorView += "No Queues Available! ** "
+	}
+	var allQueueNames []string
+	for _, q := range allQueues {
+		allQueueNames = append(allQueueNames, strconv.FormatInt(q.ID, 32))
+	}
 	queueDropDown := tview.NewDropDown().SetLabel("Queue: ").
-		SetOptions([]string{"Queue1", "Queue2", "Queue3"}, nil).
+		SetOptions(allQueueNames, nil).
 		SetCurrentOption(0)
 	queueDropDown.SetFieldBackgroundColor(tcell.ColorBlack)
 	isQueueDropDownOpen := false
 	queueDropDown.SetSelectedFunc(func(text string, index int) {
-		app.Stop()
+		controller.AddDownload(urlDownload, allQueues[index].ID, nameDownload)
+		drawNewQueue(app)
 	})
 	nameDownloadInput.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
@@ -73,6 +87,7 @@ func DrawNewDownloadPage(app *tview.Application) {
 		AddItem(inputFields[1], 1, 0, true).
 		AddItem(queueDropDown, 1, 0, true).
 		AddItem(tview.NewTextView().SetBackgroundColor(tcell.ColorBlack), 0, 1, false).
+		AddItem(tview.NewTextView().SetText(errorView).SetTextColor(tcell.ColorRed), 1, 0, false).
 		AddItem(footer, 1, 0, false)
 
 	newDownloadFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
