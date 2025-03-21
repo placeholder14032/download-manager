@@ -162,6 +162,7 @@ func drawNewQueue(app *tview.Application) {
 	app.SetRoot(addQueueFlex, true).SetFocus(inputFields[0])
 }
 func drawSelectQueue(app *tview.Application) {
+	errorView := ""
 	tabHeader := returnTabHeader()
 
 	header := tview.NewTextView().
@@ -169,6 +170,9 @@ func drawSelectQueue(app *tview.Application) {
 		SetDynamicColors(true)
 
 	listQueues := controller.GetQueues()
+	if len(listQueues) == 0 {
+		errorView = "No Queues Available! ** "
+	}
 	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | f[1,2,3] to chnage tabs | Ctrl+q to quit")
 
 	var selectOptions = tview.NewList()
@@ -187,6 +191,7 @@ func drawSelectQueue(app *tview.Application) {
 		AddItem(header, 1, 0, false).
 		AddItem(selectOptions, 2*listHeight, 0, true).
 		AddItem(tview.NewTextView().SetBackgroundColor(tcell.ColorBlack), 0, 1, false).
+		AddItem(tview.NewTextView().SetText(errorView).SetTextColor(tcell.ColorRed), 1, 0, false).
 		AddItem(footer, 1, 0, false)
 	app.SetRoot(selectQueueFlex, true).SetFocus(selectOptions)
 }
@@ -199,6 +204,8 @@ func getTimeString(t time.Time) string {
 }
 
 func drawEditQueue(app *tview.Application) {
+	errorTextView := tview.NewTextView().SetText("").SetTextColor(tcell.ColorRed)
+	errorView := ""
 	tabHeader := returnTabHeader()
 
 	header := tview.NewTextView().
@@ -271,8 +278,13 @@ func drawEditQueue(app *tview.Application) {
 	maxTryQueueInput.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
 			selectedQueue.MaxRetries, _ = strconv.ParseInt(maxTryQueueInput.GetText(), 10, 64)
-			controller.EditQueue(selectedQueue.ID, selectedQueue.Directory, selectedQueue.Name, selectedQueue.MaxSimul, selectedQueue.MaxBandWidth, selectedQueue.MaxRetries, true, strToTimeStart(startTimeQueue), strToTimeEnd(endTimeQueue))
-			DrawMainQueuePage(app)
+			err := controller.EditQueue(selectedQueue.ID, selectedQueue.Directory, selectedQueue.Name, selectedQueue.MaxSimul, selectedQueue.MaxBandWidth, selectedQueue.MaxRetries, true, strToTimeStart(startTimeQueue), strToTimeEnd(endTimeQueue))
+			if err != nil {
+				errorView = err.Error()
+				errorTextView.SetText(errorView)
+			} else {
+				DrawMainQueuePage(app)
+			}
 		}
 	}).SetAcceptanceFunc(tview.InputFieldInteger)
 
@@ -287,6 +299,7 @@ func drawEditQueue(app *tview.Application) {
 		AddItem(inputFields[4], 1, 0, true).
 		AddItem(inputFields[5], 1, 0, true).
 		AddItem(tview.NewTextView().SetBackgroundColor(tcell.ColorBlack), 0, 1, false).
+		AddItem(errorTextView, 1, 0, false).
 		AddItem(footer, 1, 0, false)
 
 	editQueueFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -311,6 +324,7 @@ func drawEditQueue(app *tview.Application) {
 }
 
 func drawDeleteQueue(app *tview.Application) {
+	errorView := ""
 	tabHeader := returnTabHeader()
 
 	header := tview.NewTextView().
@@ -318,6 +332,9 @@ func drawDeleteQueue(app *tview.Application) {
 		SetDynamicColors(true)
 
 	listQueues := controller.GetQueues()
+	if len(listQueues) == 0 {
+		errorView = "No Queues Available! ** "
+	}
 	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | f[1,2,3] to chnage tabs | Ctrl+q to quit")
 
 	var selectOptions = tview.NewList()
@@ -336,6 +353,7 @@ func drawDeleteQueue(app *tview.Application) {
 		AddItem(header, 1, 0, false).
 		AddItem(selectOptions, 2*listHeight, 0, true).
 		AddItem(tview.NewTextView().SetBackgroundColor(tcell.ColorBlack), 0, 1, false).
+		AddItem(tview.NewTextView().SetText(errorView).SetTextColor(tcell.ColorRed), 1, 0, false).
 		AddItem(footer, 1, 0, false)
 	app.SetRoot(selectQueueFlex, true).SetFocus(selectOptions)
 }
