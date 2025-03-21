@@ -10,6 +10,31 @@ var newDownloadFlex *tview.Flex
 var urlDownload, nameDownload, queueDownload string
 
 func DrawNewDownloadPage(app *tview.Application) {
+	tabHeader := tview.NewFlex().SetDirection(tview.FlexColumn)
+	tab1 := tview.NewTextView().
+		SetText("Tab 1")
+	// had to write these seperate for text to be shown
+	tab1.SetTextAlign(tview.AlignCenter).
+		SetBackgroundColor(tcell.ColorBlue)
+
+	tab2 := tview.NewTextView().
+		SetText("tab 2").
+		SetTextAlign(tview.AlignCenter)
+
+	tab3 := tview.NewTextView().
+		SetText("Tab 3").
+		SetTextAlign(tview.AlignCenter)
+
+	tabHeader.AddItem(tview.NewTextView().SetBackgroundColor(tcell.ColorBlack), 0, 1, false).
+		AddItem(tab1, 10, 0, false).
+		AddItem(tab2, 10, 0, false).
+		AddItem(tab3, 10, 0, false).
+		AddItem(tview.NewTextView().SetBackgroundColor(tcell.ColorBlack), 0, 1, false)
+
+	header := tview.NewTextView().
+		SetText("[::b]NEW DOWNLOAD[::-]").
+		SetDynamicColors(true)
+
 	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | f[1,2,3] to chnage tabs | Ctrl+q to quit")
 	var currentStep, maxStep int = 0, 3
 	nameDownloadInput := tview.NewInputField().SetLabel("Name: ").SetFieldBackgroundColor(tcell.ColorBlack)
@@ -42,6 +67,8 @@ func DrawNewDownloadPage(app *tview.Application) {
 
 	newDownloadFlex = tview.NewFlex().
 		SetDirection(tview.FlexRow).
+		AddItem(tabHeader, 1, 0, false).
+		AddItem(header, 1, 0, false).
 		AddItem(inputFields[0], 1, 0, true).
 		AddItem(inputFields[1], 1, 0, true).
 		AddItem(queueDropDown, 1, 0, true).
