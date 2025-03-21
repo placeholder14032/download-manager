@@ -16,7 +16,7 @@ type ProgressTracker struct {
 }
 
 
-func (h *DownloadHandler) UpdateProgress() {
+func (h *DownloadHandler) updateProgress() {
     h.Progress.Mutex.Lock()
     defer h.Progress.Mutex.Unlock()
     h.State.Mutex.Lock()

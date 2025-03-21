@@ -26,6 +26,8 @@ type DownloadHandler struct {
     ResumeChan    chan struct{}  
 	
 	Progress        *ProgressTracker
+
+	BandwidthLimit int64 // bytes per second, 0 means no limit
 }
 
 type DownloadState struct {
@@ -43,7 +45,7 @@ type chunk struct {
 }
 
 // Initializing 
-func (download *Download) NewDownloadHandler(client *http.Client) *DownloadHandler {
+func (download *Download) NewDownloadHandler(client *http.Client,bandwidthLimit int64) *DownloadHandler {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// we might need this to avoid NaN we got for speed:
@@ -65,6 +67,7 @@ func (download *Download) NewDownloadHandler(client *http.Client) *DownloadHandl
         ctx:      ctx,
         cancel:   cancel,
         Progress: &ProgressTracker{StartTime: time.Now()},
+		BandwidthLimit: bandwidthLimit,
     }
 
 	// Call the optimization functions inside the handler setup
@@ -210,8 +213,17 @@ func (h *DownloadHandler) downloadWithRanges(start int64, end int64) error {
 	defer file.Close()
 
     // now we will use a custom reader to count actual bytes read from the response -> make sure we are reading and writing all bytes
+
+	// Use a custom reader to count actual bytes read
 	var totalRead int64
-    reader := &countingReader{reader: resp.Body, count: &totalRead}
+	counting := &countingReader{reader: resp.Body, count: &totalRead}
+
+	// Apply bandwidth limit if set, wrapping the countingReader
+	var reader io.Reader = counting
+	if h.BandwidthLimit > 0 {
+		reader = NewLimitedReader(counting, h.BandwidthLimit)
+	}
+
     written, err := io.Copy(file, reader)
     if err != nil {
         return fmt.Errorf("failed to write chunk: %v", err)
