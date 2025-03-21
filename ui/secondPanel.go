@@ -52,7 +52,7 @@ func DrawAllDownloads(app *tview.Application) {
 
 	for i, header := range headers {
 		tempTableCell := tview.NewTableCell(header).
-			SetSelectable(false)
+			SetSelectable(false).SetExpansion(1)
 		allDownloadTable.SetCell(0, i, tempTableCell)
 	}
 

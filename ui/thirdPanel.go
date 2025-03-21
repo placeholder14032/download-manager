@@ -1,7 +1,3 @@
-// toDo: chnage the startTime after editing
-// toDo: chnage the endTime after editing
-// toDo: get queues in drawing selectQueueFlex
-
 package ui
 
 import (
@@ -19,7 +15,7 @@ import (
 )
 
 var selectedQueue util.QueueBody
-var selectQueueFlex, selectOptionQueueFlex, addQueueFlex, editQueueFlex *tview.Flex
+var selectQueueFlex, selectOptionQueueFlex, addQueueFlex, editQueueFlex, deleteQueueFlex *tview.Flex
 var nameQueue, directoryQueue, startTimeQueue, endTimeQueue string
 var maxSimultaneousQueue, maxTryQueue, maxBandwidthQueue int64
 
@@ -35,12 +31,13 @@ func DrawMainQueuePage(app *tview.Application) {
 
 	var queueOptions = tview.NewList().
 		AddItem("> NEW QUEUE", "adding new qeueu", 'a', func() { drawNewQueue(app) }).
-		AddItem("> EDIT QUEUE", "edit existing queue", 'b', func() { drawSelectQueue(app) })
+		AddItem("> EDIT QUEUE", "edit existing queue", 'b', func() { drawSelectQueue(app) }).
+		AddItem("> DELETE QUEUE", "delete existing queue", 'c', func() { drawDeleteQueue(app) })
 	selectOptionQueueFlex = tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(tabHeader, 1, 0, false).
 		AddItem(header, 1, 0, false).
-		AddItem(queueOptions, 4, 0, true).
+		AddItem(queueOptions, 6, 0, true).
 		AddItem(tview.NewTextView().SetBackgroundColor(tcell.ColorBlack), 0, 1, false).
 		AddItem(footer, 1, 0, false)
 
@@ -311,6 +308,36 @@ func drawEditQueue(app *tview.Application) {
 	})
 
 	app.SetRoot(editQueueFlex, true).SetFocus(inputFields[0])
+}
+
+func drawDeleteQueue(app *tview.Application) {
+	tabHeader := returnTabHeader()
+
+	header := tview.NewTextView().
+		SetText("[::b]DELETE QUEUE[::-]").
+		SetDynamicColors(true)
+
+	listQueues := controller.GetQueues()
+	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | f[1,2,3] to chnage tabs | Ctrl+q to quit")
+
+	var selectOptions = tview.NewList()
+	for i, q := range listQueues {
+		selectOptions.AddItem(fmt.Sprintf("> %s", q.Name), "", rune('a'+i), func() {
+			controller.DeleteQueue(q.ID)
+			DrawMainQueuePage(app)
+		})
+	}
+
+	listHeight := len(listQueues)
+
+	selectQueueFlex = tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(tabHeader, 1, 0, false).
+		AddItem(header, 1, 0, false).
+		AddItem(selectOptions, 2*listHeight, 0, true).
+		AddItem(tview.NewTextView().SetBackgroundColor(tcell.ColorBlack), 0, 1, false).
+		AddItem(footer, 1, 0, false)
+	app.SetRoot(selectQueueFlex, true).SetFocus(selectOptions)
 }
 
 func returnTabHeader() *tview.Flex {
