@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/placeholder14032/download-manager/internal/util"
@@ -23,6 +24,15 @@ func SendAndPrint(r util.Request) {
 	resp := SendReq(r)
 	fmt.Println()
 	fmt.Printf("%+v\n", resp)
+}
+
+func returnResp(resp util.Response) error {
+	if resp.Type == util.OK {
+		return nil
+	} else {
+		body, _ := resp.Body.(util.FailureMessage)
+		return errors.New(body.Message)
+	}
 }
 
 func Close(){
