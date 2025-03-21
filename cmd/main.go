@@ -1,0 +1,47 @@
+package main
+
+import (
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
+
+	"github.com/placeholder14032/download-manager/ui"
+)
+
+func main() {
+	app := tview.NewApplication()
+
+	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		// Handle global keys
+		switch event.Key() {
+		case tcell.KeyF1:
+			if cmd.StatePanel != "first" {
+				cmd.DrawNewDownloadPage(app)
+			}
+			//defer fmt.Println("hi")
+			return nil
+		case tcell.KeyF2:
+			if cmd.StatePanel != "second" {
+				cmd.DrawAllDownloads(app)
+			}
+			return nil
+		case tcell.KeyF3:
+			if cmd.StatePanel != "third" {
+				cmd.DrawMainQueuePage(app)
+			}
+			return nil
+		case tcell.KeyEscape:
+			// Handle Escape - go back
+			return nil
+		case tcell.KeyCtrlQ:
+			app.Stop()
+			return nil
+		}
+		return event
+	})
+
+	cmd.DrawAllDownloads(app)
+
+	if err := app.EnableMouse(true).Run(); err != nil {
+		panic(err)
+	}
+}
