@@ -41,6 +41,14 @@ func (m *Manager) findDownloadQueueIndex(dlID int64) (int, int) {
 	return -1, -1
 }
 
+func checkFileExists(filePath string) bool {
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		return false
+	}
+	return fileInfo.Mode().IsRegular()
+}
+
 func checkDirExists(dir string) bool {
 	fileInfo, err := os.Stat(dir)
 	if err != nil {
@@ -53,10 +61,14 @@ func checkParDirExists(filePath string) bool {
 	return checkDirExists(path.Dir(filePath))
 }
 
-func determineFilePath(directory string, url string) string {
+func determineFilePath(directory string, url string, def string) string {
+	// if the default is a valid file name in a valid directory then just use that otherwise
 	// joins the directory with the filename
 	// if the directory doesn't have the last slash (/) it will usse the parent
 	// because it is seen as a file in that case
+	if checkParDirExists(def) && !checkFileExists(def) {
+		return def
+	}
 	return path.Join(directory, path.Base(url))
 	// changed from Path.Dir(Directory) because it might cause problems with omitting the last folder
 }
@@ -155,12 +167,12 @@ func checkNowInRange(start, end time.Time) bool {
 	return checkTimeInRange(start, end, now)
 }
 
-func (m *Manager) addDownload(qID int64, url string) error {
+func (m *Manager) addDownload(qID int64, url string, fileName string) error {
 	i := m.findQueueIndex(qID)
 	if i == -1 {
 		return fmt.Errorf("Bad queue id: %d", qID)
 	}
-	dl := createDownload(m.lastUID, url, determineFilePath(m.qs[i].SaveDir, url), m.qs[i].MaxRetries)
+	dl := createDownload(m.lastUID, url, determineFilePath(m.qs[i].SaveDir, url, fileName), m.qs[i].MaxRetries)
 	download.CreateDefaultHandler(&dl)
 	m.lastUID++
 	m.qs[i].DownloadLists = append(m.qs[i].DownloadLists, dl)
