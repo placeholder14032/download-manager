@@ -31,6 +31,31 @@ func DrawAllDownloads(app *tview.Application) {
 
 	editMode := false
 
+	tabHeader := tview.NewFlex().SetDirection(tview.FlexColumn)
+	tab1 := tview.NewTextView().
+		SetText("Tab 1").
+		SetTextAlign(tview.AlignCenter)
+
+	tab2 := tview.NewTextView().
+		SetText("tab 2")
+	// had to write these seperate for text to be shown
+	tab2.SetTextAlign(tview.AlignCenter).
+		SetBackgroundColor(tcell.ColorBlue)
+
+	tab3 := tview.NewTextView().
+		SetText("Tab 3").
+		SetTextAlign(tview.AlignCenter)
+
+	tabHeader.AddItem(tview.NewTextView().SetBackgroundColor(tcell.ColorBlack), 0, 1, false).
+		AddItem(tab1, 10, 0, false).
+		AddItem(tab2, 10, 0, false).
+		AddItem(tab3, 10, 0, false).
+		AddItem(tview.NewTextView().SetBackgroundColor(tcell.ColorBlack), 0, 1, false)
+
+	header := tview.NewTextView().
+		SetText("[::b]ALL DOWNLOADS[::-]").
+		SetDynamicColors(true)
+
 	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | f[1,2,3] to chnage tabs | Ctrl+q to quit")
 	headers := []string{"Name", "URL", "Queue", "Status", "Progress", "Speed"}
 	allDownloadFlex = tview.NewFlex()
@@ -67,6 +92,8 @@ func DrawAllDownloads(app *tview.Application) {
 
 	allDownloadFlex = tview.NewFlex().
 		SetDirection(tview.FlexRow).
+		AddItem(tabHeader, 1, 0, false).
+		AddItem(header, 1, 0, false).
 		AddItem(allDownloadTable, len(allDownloads)+3, 0, true).
 		AddItem(tview.NewTextView().SetBackgroundColor(tcell.ColorBlack), 0, 1, false).
 		AddItem(footer, 1, 0, false)
