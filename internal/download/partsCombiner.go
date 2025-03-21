@@ -109,7 +109,8 @@ func (c *PartsCombiner) verifyParts(partsMap map[int]string, partsCount int) err
 
 func (c *PartsCombiner) mergeParts(filePath string, partsMap map[int]string) error {
     fmt.Println("Merging parts...")
-    combinedFile, err := os.Create(filePath)
+    // combinedFile, err := os.Create(filePath)
+	combinedFile, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644) // with this we can overwrite on that
     if err != nil {
         return fmt.Errorf("failed to create final file: %v", err)
     }

@@ -14,6 +14,7 @@ type ProgressTracker struct {
     AvgSpeed       float64 // Overall average speed (bytes/s)
 	SpeedSamples   []float64 // we will use this to make progress tracking more smooth (like the realetion we had in physics)
     Mutex          sync.Mutex
+    Percent        float64
 }
 
 
@@ -48,6 +49,7 @@ func (h *DownloadHandler) updateProgress() {
         speedSum += speed
     }
     h.Progress.CurrentSpeed = speedSum / float64(len(h.Progress.SpeedSamples))
+    h.Progress.Percent = float64(h.State.CurrentByte) / float64(h.State.TotalBytes) * 100
 
     // Average speed (from start to now)
     if totalElapsed > 0 {
@@ -60,15 +62,45 @@ func (h *DownloadHandler) updateProgress() {
     h.Progress.LastBytes = h.State.CurrentByte
 }
 
-func (h *DownloadHandler) DisplayProgress() {
-	h.Progress.Mutex.Lock()
-	h.State.Mutex.Lock()
-	defer h.Progress.Mutex.Unlock()
-	defer h.State.Mutex.Unlock()
+// func (h *DownloadHandler) DisplayProgress() {
+// 	h.Progress.Mutex.Lock()
+// 	h.State.Mutex.Lock()
+// 	defer h.Progress.Mutex.Unlock()
+// 	defer h.State.Mutex.Unlock()
 
-	percent := float64(h.State.CurrentByte) / float64(h.State.TotalBytes) * 100
-	currentSpeedMBps := h.Progress.CurrentSpeed / (1024 * 1024)
-	avgSpeedMBps := h.Progress.AvgSpeed / (1024 * 1024)
-	fmt.Printf("Progress: %.2f%%, Current Speed: %.2f MB/s, Avg Speed: %.2f MB/s, Downloaded: %d/%d bytes\n",
-		percent, currentSpeedMBps, avgSpeedMBps, h.State.CurrentByte, h.State.TotalBytes)
+// 	percent := float64(h.State.CurrentByte) / float64(h.State.TotalBytes) * 100
+// 	currentSpeedMBps := h.Progress.CurrentSpeed / (1024 * 1024)
+// 	avgSpeedMBps := h.Progress.AvgSpeed / (1024 * 1024)
+// 	fmt.Printf("Progress: %.2f%%, Current Speed: %.2f MB/s, Avg Speed: %.2f MB/s, Downloaded: %d/%d bytes\n",
+// 		percent, currentSpeedMBps, avgSpeedMBps, h.State.CurrentByte, h.State.TotalBytes)
+// }
+
+func (pt *ProgressTracker) GetCurrentSpeed() string {
+	return formatSpeed(pt.CurrentSpeed)
+}
+
+func (pt *ProgressTracker) GetOverallSpeed() string {
+	return formatSpeed(pt.AvgSpeed)
+}
+
+func (pt  *ProgressTracker) GetProgress() float64 {
+    return pt.Percent
+}
+func formatSpeed(bytesPerSec float64) string {
+	const (
+		KB = 1024
+		MB = 1024 * KB
+		GB = 1024 * MB
+	)
+
+	switch {
+	case bytesPerSec >= GB:
+		return fmt.Sprintf("%.2f GB/s", bytesPerSec/float64(GB))
+	case bytesPerSec >= MB:
+		return fmt.Sprintf("%.2f MB/s", bytesPerSec/float64(MB))
+	case bytesPerSec >= KB:
+		return fmt.Sprintf("%.2f KB/s", bytesPerSec/float64(KB))
+	default:
+		return fmt.Sprintf("%.2f B/s", bytesPerSec)
+	}
 }

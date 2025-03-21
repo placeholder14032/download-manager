@@ -52,7 +52,6 @@ func (download *Download) NewDownloadHandler(client *http.Client,bandwidthLimit 
 	resp, err := client.Head(download.URL)
 	if err != nil {
 		fmt.Printf("Failed to get content length: %v\n", err)
-		return nil
 	}
 	defer resp.Body.Close()
 	cl := resp.ContentLength
@@ -80,7 +79,6 @@ func (download *Download) NewDownloadHandler(client *http.Client,bandwidthLimit 
 
     return dh
 }
-
 
 func (h *DownloadHandler) StartDownloading() error {
 	// First, we will check if the server supports range requests or not -> using our IsAcceptRangeSupported() method
@@ -137,7 +135,7 @@ func (h *DownloadHandler) StartDownloading() error {
         fmt.Println("Calling combineParts")
         return h.combineParts(contentLength)
     case err := <-errChan:
-		close(jobs)
+		// close(jobs)
         return err
     }
 }

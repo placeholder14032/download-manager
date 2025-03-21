@@ -60,28 +60,8 @@ func (r *countingReader) Read(p []byte) (n int, err error) {
 
     // Update progress after each read
     r.handler.updateProgress()
-    
+
     return n, err
-}
-
-func (h *DownloadHandler) handleDownloadCompletion(contentLength int64, errChan <-chan error, done <-chan bool) error {
-    
-    // fmt.Println("Waiting for done signal...")
-    <-done  // block until `done` is closed
-    // fmt.Println("Done signal received, proceeding with combineParts")
-
-    for err := range errChan {
-        if err != nil {
-            fmt.Println("Error in handleDownloadCompletion:", err)
-            return err
-        }
-    }
-    if h.State.CurrentByte < h.State.TotalBytes {
-        return fmt.Errorf("download incomplete: got %d/%d bytes", h.State.CurrentByte, h.State.TotalBytes)
-    }
-
-    fmt.Println("Calling combineParts")
-    return h.combineParts(contentLength)
 }
 
 func (h *DownloadHandler) combineParts( contentLength int64) error {
@@ -97,7 +77,6 @@ func (download *Download) NewDlHandler(client *http.Client, chunkSize int64, wor
 	resp, err := client.Head(download.URL)
 	if err != nil {
 		fmt.Printf("Failed to get content length: %v\n", err)
-		return nil
 	}
 	defer resp.Body.Close()
 	cl := resp.ContentLength

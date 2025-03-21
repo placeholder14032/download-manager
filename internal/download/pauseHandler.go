@@ -16,7 +16,7 @@ func (h *DownloadHandler) Pause() {
 	h.State.IsPaused = true
 	h.State.Mutex.Unlock()
 
-	close(h.PauseChan)
+	// close(h.PauseChan)
 	h.cancel()
 }
 func (h *DownloadHandler) Resume() error {
