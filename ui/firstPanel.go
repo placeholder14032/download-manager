@@ -2,6 +2,7 @@ package ui
 
 import (
 	"github.com/gdamore/tcell/v2"
+	"github.com/placeholder14032/download-manager/internal/controller"
 	"github.com/rivo/tview"
 )
 
@@ -40,13 +41,19 @@ func DrawNewDownloadPage(app *tview.Application) {
 	nameDownloadInput := tview.NewInputField().SetLabel("Name: ").SetFieldBackgroundColor(tcell.ColorBlack)
 	urlDownloadInput := tview.NewInputField().SetLabel("Url: ").SetFieldBackgroundColor(tcell.ColorBlack)
 	var inputFields []*tview.InputField = []*tview.InputField{nameDownloadInput, urlDownloadInput}
+
+	allQueues := controller.GetQueues()
+	var allQueueNames []string
+	for _, q := range allQueues {
+		allQueueNames = append(allQueueNames, q.Name)
+	}
 	queueDropDown := tview.NewDropDown().SetLabel("Queue: ").
-		SetOptions([]string{"Queue1", "Queue2", "Queue3"}, nil).
+		SetOptions(allQueueNames, nil).
 		SetCurrentOption(0)
 	queueDropDown.SetFieldBackgroundColor(tcell.ColorBlack)
 	isQueueDropDownOpen := false
 	queueDropDown.SetSelectedFunc(func(text string, index int) {
-		app.Stop()
+		controller.AddDownload(urlDownload, allQueues[index].ID, nameDownload)
 	})
 	nameDownloadInput.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
