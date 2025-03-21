@@ -63,10 +63,18 @@ func Import(state *SavedDownloadState, client *http.Client) (*DownloadHandler, e
         ResumeChan:    make(chan struct{}),
         ctx:           ctx,
         cancel:        cancel,
-        Progress: &ProgressTracker{
-            StartTime: time.Now(),
-        },
-    }
+
+		Progress: &ProgressTracker{
+			StartTime:      time.Now(),
+			LastUpdateTime: time.Now(),
+			LastBytes:      0,
+			CurrentSpeed:   0.0,
+			AvgSpeed:       0.0,
+			SpeedSamples:   make([]float64, 0, 5),
+			Percent:        0.0,
+			Mutex:          sync.Mutex{},
+		},
+	}
 
     incompleteParts := make([]chunk, 0, len(state.IncompleteParts))
     for _, start := range state.IncompleteParts {
