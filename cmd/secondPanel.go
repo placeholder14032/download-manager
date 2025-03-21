@@ -141,6 +141,7 @@ func DrawAllDownloads(app *tview.Application) {
 	})
 
 	app.SetRoot(allDownloadFlex, true).SetFocus(allDownloadTable)
+	StatePanel = "second"
 }
 
 func convertStateToString(state download.State) string {
