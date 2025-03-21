@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"strconv"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/placeholder14032/download-manager/internal/controller"
 	"github.com/rivo/tview"
@@ -45,7 +47,7 @@ func DrawNewDownloadPage(app *tview.Application) {
 	allQueues := controller.GetQueues()
 	var allQueueNames []string
 	for _, q := range allQueues {
-		allQueueNames = append(allQueueNames, q.Name)
+		allQueueNames = append(allQueueNames, strconv.FormatInt(q.ID, 32))
 	}
 	queueDropDown := tview.NewDropDown().SetLabel("Queue: ").
 		SetOptions(allQueueNames, nil).
@@ -54,6 +56,7 @@ func DrawNewDownloadPage(app *tview.Application) {
 	isQueueDropDownOpen := false
 	queueDropDown.SetSelectedFunc(func(text string, index int) {
 		controller.AddDownload(urlDownload, allQueues[index].ID, nameDownload)
+		DrawAllDownloads(app)
 	})
 	nameDownloadInput.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
