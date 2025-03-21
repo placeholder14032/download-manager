@@ -146,14 +146,13 @@ func DrawAllDownloads(app *tview.Application) {
 
 func convertStateToString(state download.State) string {
 	states := []string{
+		"Pendoing",
+		"Downloading",
 		"Paused",
 		"Cancelled",
-		"Done",
-		"Downloading",
-		"Starting",
-		"Retrying",
 		"Failed",
-		"Pendeing",
+		"Retrying",
+		"Done",
 	}
 
 	return states[int(state)]
