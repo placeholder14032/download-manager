@@ -27,10 +27,6 @@ func (m *Manager) init() {
 	m.events = make(chan util.Event, 10) // making buffer size bigger just to be safe
 }
 
-func (m *Manager) loadJson() {
-	// TODO
-}
-
 func (m *Manager) Start(req chan util.Request, resps chan util.Response) {
 	// Initialization
 	m.init()
@@ -38,7 +34,7 @@ func (m *Manager) Start(req chan util.Request, resps chan util.Response) {
 	m.resps = resps
 	// start downloading unpaused downloads
 	// load json
-	m.loadJson()
+	m.LoadJson()
 	// creating a timer to check stuff on a frequent basis
 	minTimer := time.NewTicker(time.Minute) // ticks every minute
 	// starting the main loop handling events and occasionally checking the whole state of things
