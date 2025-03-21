@@ -6,27 +6,49 @@ import (
 	"os"
 	"time"
 
-	"github.com/placeholder14032/download-manager/internal/download" // Adjust this import path
+	"github.com/placeholder14032/download-manager/internal/download"
 )
+const stateFile = "download_state.json" // File to store the serialized state
 
 func main() {
 	// Configure HTTP client with a longer timeout
 	client := &http.Client{
 		Transport: &http.Transport{
-			ResponseHeaderTimeout: 30 * time.Second, // Increase to avoid timeouts
+			ResponseHeaderTimeout: 30 * time.Second,
 		},
 	}
 
 	// Define the download
-	dl := &download.Download{
+	dl := download.Download{
 		URL:      "https://archive.apache.org/dist/httpd/httpd-2.4.58.tar.gz",
 		FilePath: "/Users/nazaninsmac/Downloads/testfile.tar.gz",
 	}
 
-	// Initialize DownloadHandler
-	dh := dl.NewDownloadHandler(client, 512*1024, 4, 0)
-	fmt.Printf("Starting download from: %s\n", dl.URL)
-	fmt.Printf("Saving to: %s\n", dl.FilePath)
+	// Check if a saved state exists
+	var dh *download.DownloadHandler
+	if _, err := os.Stat(stateFile); err == nil {
+		// Load existing state
+		data, err := os.ReadFile(stateFile)
+		if err != nil {
+			fmt.Printf("Failed to read state file: %v\n", err)
+			return
+		}
+		dh, err = download.DeserializeHandler(data, client)
+		if err != nil {
+			fmt.Printf("Failed to deserialize state: %v\n", err)
+			return
+		}
+		fmt.Printf("Resuming download from saved state: %s\n", dh.URL)
+	} else {
+		// Start a new download
+		dh = dl.NewDownloadHandler(client, 512*1024, 4, 0)
+		if dh == nil {
+			fmt.Println("Failed to initialize DownloadHandler")
+			return
+		}
+		fmt.Printf("Starting new download from: %s\n", dl.URL)
+	}
+	fmt.Printf("Saving to: %s\n", dh.FilePath)
 
 	// Channels for coordination
 	downloadDone := make(chan struct{})
@@ -39,6 +61,10 @@ func main() {
 			fmt.Printf("Download failed: %v\n", err)
 		} else {
 			fmt.Println("Download completed successfully")
+			// Remove state file on successful completion
+			if err := os.Remove(stateFile); err != nil {
+				fmt.Printf("Warning: failed to remove state file: %v\n", err)
+			}
 		}
 		close(downloadDone)
 	}()
@@ -47,33 +73,63 @@ func main() {
 	go func() {
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
-		fmt.Println("Progress reporting started") // Debug
+		fmt.Println("Progress reporting started")
 		for {
 			select {
 			case <-stopAll:
-				fmt.Println("Progress reporting stopped") // Debug
+				fmt.Println("Progress reporting stopped")
 				return
 			case <-ticker.C:
-				dh.UpdateProgress()
-				dh.DisplayProgress()
+				have := dh.State.CurrentByte
+				want := dh.State.TotalBytes
+				if want > 0 {
+					percent := float64(have) / float64(want) * 100
+					elapsed := time.Since(dh.Progress.StartTime).Seconds()
+					speed := float64(have) / elapsed / 1024 // KB/s
+					fmt.Printf("Progress: %.2f%% (%d/%d bytes), Speed: %.2f KB/s\n", percent, have, want, speed)
+				}
 			}
 		}
 	}()
 
-	// Pause/resume test goroutine
+	// Pause/resume test goroutine with serialization to file
 	go func() {
 		for i := 1; i <= 2; i++ {
 			select {
 			case <-stopAll:
 				return
 			case <-time.After(5 * time.Second):
-				fmt.Printf("Pausing download #%d after 2 seconds...\n", i)
+				fmt.Printf("Pausing download #%d after 5 seconds...\n", i)
 				dh.Pause()
+
+				// Serialize state and write to file
+				data, err := dh.Serialize()
+				if err != nil {
+					fmt.Printf("Serialization failed: %v\n", err)
+					return
+				}
+				if err := os.WriteFile(stateFile, data, 0644); err != nil {
+					fmt.Printf("Failed to write state to file: %v\n", err)
+					return
+				}
+				fmt.Printf("Download state saved to %s\n", stateFile)
 
 				select {
 				case <-stopAll:
 					return
 				case <-time.After(3 * time.Second):
+					// Load from file and deserialize
+					data, err = os.ReadFile(stateFile)
+					if err != nil {
+						fmt.Printf("Failed to read state file: %v\n", err)
+						return
+					}
+					newDh, err := download.DeserializeHandler(data, client)
+					if err != nil {
+						fmt.Printf("Deserialization failed: %v\n", err)
+						return
+					}
+					dh = newDh // Replace the old handler
 					fmt.Printf("Resuming download #%d after 3 seconds of pause...\n", i)
 					if err := dh.Resume(); err != nil {
 						fmt.Printf("Resume #%d failed: %v\n", i, err)
@@ -89,20 +145,135 @@ func main() {
 	case <-downloadDone:
 		close(stopAll)
 		fmt.Println("Download finished, verifying file...")
-		info, err := os.Stat(dl.FilePath)
+		info, err := os.Stat(dh.FilePath)
 		if err != nil {
 			fmt.Printf("File check failed: %v\n", err)
 		} else {
-			fmt.Printf("File size: %d bytes (expected ~9825177 bytes)\n", info.Size())
+			fmt.Printf("File size: %d bytes (expected 9825177 bytes)\n", info.Size())
 		}
 	case <-time.After(60 * time.Second):
 		fmt.Println("Test timeout reached")
 		dh.Pause()
+		// Serialize final state to file
+		data, err := dh.Serialize()
+		if err != nil {
+			fmt.Printf("Serialization failed: %v\n", err)
+		} else if err := os.WriteFile(stateFile, data, 0644); err != nil {
+			fmt.Printf("Failed to write final state to file: %v\n", err)
+		} else {
+			fmt.Printf("Final state saved to %s; you can resume later\n", stateFile)
+		}
 		close(stopAll)
 	}
 
 	fmt.Println("Exiting program")
 }
+// --------------------------------------------------------------------------------------------------------- progressTracker
+// package main
+
+// import (
+// 	"fmt"
+// 	"net/http"
+// 	"os"
+// 	"time"
+
+// 	"github.com/placeholder14032/download-manager/internal/download" // Adjust this import path
+// )
+
+// func main() {
+// 	// Configure HTTP client with a longer timeout
+// 	client := &http.Client{
+// 		Transport: &http.Transport{
+// 			ResponseHeaderTimeout: 30 * time.Second, // Increase to avoid timeouts
+// 		},
+// 	}
+
+// 	// Define the download
+// 	dl := &download.Download{
+// 		URL:      "https://archive.apache.org/dist/httpd/httpd-2.4.58.tar.gz",
+// 		FilePath: "/Users/nazaninsmac/Downloads/testfile.tar.gz",
+// 	}
+
+// 	// Initialize DownloadHandler
+// 	dh := dl.NewDownloadHandler(client, 512*1024, 4, 0)
+// 	fmt.Printf("Starting download from: %s\n", dl.URL)
+// 	fmt.Printf("Saving to: %s\n", dl.FilePath)
+
+// 	// Channels for coordination
+// 	downloadDone := make(chan struct{})
+// 	stopAll := make(chan struct{})
+
+// 	// Download goroutine
+// 	go func() {
+// 		err := dh.StartDownloading()
+// 		if err != nil {
+// 			fmt.Printf("Download failed: %v\n", err)
+// 		} else {
+// 			fmt.Println("Download completed successfully")
+// 		}
+// 		close(downloadDone)
+// 	}()
+
+// 	// Progress reporting goroutine
+// 	go func() {
+// 		ticker := time.NewTicker(1 * time.Second)
+// 		defer ticker.Stop()
+// 		fmt.Println("Progress reporting started") // Debug
+// 		for {
+// 			select {
+// 			case <-stopAll:
+// 				fmt.Println("Progress reporting stopped") // Debug
+// 				return
+// 			case <-ticker.C:
+// 				dh.UpdateProgress()
+// 				dh.DisplayProgress()
+// 			}
+// 		}
+// 	}()
+
+// 	// Pause/resume test goroutine
+// 	go func() {
+// 		for i := 1; i <= 2; i++ {
+// 			select {
+// 			case <-stopAll:
+// 				return
+// 			case <-time.After(5 * time.Second):
+// 				fmt.Printf("Pausing download #%d after 2 seconds...\n", i)
+// 				dh.Pause()
+
+// 				select {
+// 				case <-stopAll:
+// 					return
+// 				case <-time.After(3 * time.Second):
+// 					fmt.Printf("Resuming download #%d after 3 seconds of pause...\n", i)
+// 					if err := dh.Resume(); err != nil {
+// 						fmt.Printf("Resume #%d failed: %v\n", i, err)
+// 						return
+// 					}
+// 				}
+// 			}
+// 		}
+// 	}()
+
+// 	// Wait for download completion or timeout
+// 	select {
+// 	case <-downloadDone:
+// 		close(stopAll)
+// 		fmt.Println("Download finished, verifying file...")
+// 		info, err := os.Stat(dl.FilePath)
+// 		if err != nil {
+// 			fmt.Printf("File check failed: %v\n", err)
+// 		} else {
+// 			fmt.Printf("File size: %d bytes (expected ~9825177 bytes)\n", info.Size())
+// 		}
+// 	case <-time.After(60 * time.Second):
+// 		fmt.Println("Test timeout reached")
+// 		dh.Pause()
+// 		close(stopAll)
+// 	}
+
+// 	fmt.Println("Exiting program")
+// }
 // --------------------------------------------------------------------------------------------------------------- pause/resume test
 // package main
 
