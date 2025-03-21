@@ -43,7 +43,7 @@ type chunk struct {
 }
 
 // Initializing 
-func (download *Download) NewDownloadHandler(client *http.Client, chunkSize int64, workersCount int, bandsWidth int64) *DownloadHandler {
+func (download *Download) NewDownloadHandler(client *http.Client) *DownloadHandler {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// we might need this to avoid NaN we got for speed:
@@ -55,25 +55,22 @@ func (download *Download) NewDownloadHandler(client *http.Client, chunkSize int6
 	defer resp.Body.Close()
 	cl := resp.ContentLength
 
-    dh := &DownloadHandler{
-        Client:            client,
-        CHUNK_SIZE:        chunkSize,
-        WORKERS_COUNT:     workersCount,
-        URL:              download.URL,
-        FilePath:         download.FilePath,
-        State:            &DownloadState{
-			TotalBytes: cl,
-		}, 
-
-		PauseChan:     make(chan struct{}),
-        ResumeChan:    make(chan struct{}),
-		ctx:           ctx,
-        cancel:        cancel,
-
-		Progress: &ProgressTracker{
-            StartTime: time.Now(),
-        },
+	dh := &DownloadHandler{
+        Client:   client,
+        URL:      download.URL,
+        FilePath: download.FilePath,
+        State:    &DownloadState{TotalBytes: cl},
+        PauseChan: make(chan struct{}),
+        ResumeChan: make(chan struct{}),
+        ctx:      ctx,
+        cancel:   cancel,
+        Progress: &ProgressTracker{StartTime: time.Now()},
     }
+
+	// Call the optimization functions inside the handler setup
+    dh.CHUNK_SIZE = dh.calculateOptimalChunkSize(cl)
+    dh.WORKERS_COUNT = dh.calculateOptimalWorkerCount(cl)
+
     return dh
 }
 

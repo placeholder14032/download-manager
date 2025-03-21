@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
     "io"
+    "context"
+    "time"
 )
 
 func (h *DownloadHandler) IsAcceptRangeSupported() (bool, int64, error) {
@@ -76,4 +78,39 @@ func (h *DownloadHandler) handleDownloadCompletion(contentLength int64, errChan 
 func (h *DownloadHandler) combineParts( contentLength int64) error {
     c :=  NewPartsCombiner(contentLength,int(h.PartsCount),h.CHUNK_SIZE)
     return c.CombineParts(h.FilePath, contentLength, int(h.PartsCount))
+}
+
+// old initializer we might need it later
+func (download *Download) NewDlHandler(client *http.Client, chunkSize int64, workersCount int, bandsWidth int64) *DownloadHandler {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// we might need this to avoid NaN we got for speed:
+	resp, err := client.Head(download.URL)
+	if err != nil {
+		fmt.Printf("Failed to get content length: %v\n", err)
+		return nil
+	}
+	defer resp.Body.Close()
+	cl := resp.ContentLength
+
+    dh := &DownloadHandler{
+        Client:            client,
+        CHUNK_SIZE:        chunkSize,
+        WORKERS_COUNT:     workersCount,
+        URL:              download.URL,
+        FilePath:         download.FilePath,
+        State:            &DownloadState{
+			TotalBytes: cl,
+		}, 
+
+		PauseChan:     make(chan struct{}),
+        ResumeChan:    make(chan struct{}),
+		ctx:           ctx,
+        cancel:        cancel,
+
+		Progress: &ProgressTracker{
+            StartTime: time.Now(),
+        },
+    }
+    return dh
 }
