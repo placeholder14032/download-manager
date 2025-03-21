@@ -45,13 +45,25 @@ type chunk struct {
 // Initializing 
 func (download *Download) NewDownloadHandler(client *http.Client, chunkSize int64, workersCount int, bandsWidth int64) *DownloadHandler {
 	ctx, cancel := context.WithCancel(context.Background())
+
+	// we might need this to avoid NaN we got for speed:
+	resp, err := client.Head(download.URL)
+	if err != nil {
+		fmt.Printf("Failed to get content length: %v\n", err)
+		return nil
+	}
+	defer resp.Body.Close()
+	cl := resp.ContentLength
+
     dh := &DownloadHandler{
         Client:            client,
         CHUNK_SIZE:        chunkSize,
         WORKERS_COUNT:     workersCount,
         URL:              download.URL,
         FilePath:         download.FilePath,
-        State:            &DownloadState{}, 
+        State:            &DownloadState{
+			TotalBytes: cl,
+		}, 
 
 		PauseChan:     make(chan struct{}),
         ResumeChan:    make(chan struct{}),
@@ -99,25 +111,6 @@ func (h *DownloadHandler) StartDownloading() error {
 		h.distributeJobs(jobs, int(contentLength))
 		// close(jobs) // close jobs channel after all tasks are sent 
 	}()
-
-	// Progress reporting goroutine
-    go func() {
-        ticker := time.NewTicker(1 * time.Second) // Update every second
-        defer ticker.Stop()
-        for {
-            select {
-            case <-h.ctx.Done():
-                return
-            case <-ticker.C:
-                h.updateProgress()
-                h.displayProgress()
-            case <-done:
-                h.updateProgress()
-                h.displayProgress()
-                return
-            }
-        }
-    }()
 
 	// waiting for workers to be done
 	go func() {
@@ -182,6 +175,11 @@ func (h *DownloadHandler) downloadWithRanges(start int64, end int64) error {
     partFileName := fmt.Sprintf("%s.part%d", h.FilePath, partNumber)
     fmt.Printf("Worker starting download for chunk %d-%d at %s\n", start, end, time.Now().Format(time.RFC3339))
 
+	// Check if part exists and is valid
+	if info, err := os.Stat(partFileName); err == nil && info.Size() == expectedSize {
+		fmt.Printf("Chunk %d-%d already complete on disk\n", start, end)
+		return nil
+	}
 
 	// creating request for server
 	req, err := http.NewRequest("GET", h.URL, nil)

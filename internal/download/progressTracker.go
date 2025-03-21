@@ -16,7 +16,7 @@ type ProgressTracker struct {
 }
 
 
-func (h *DownloadHandler) updateProgress() {
+func (h *DownloadHandler) UpdateProgress() {
     h.Progress.Mutex.Lock()
     defer h.Progress.Mutex.Unlock()
     h.State.Mutex.Lock()
@@ -45,15 +45,15 @@ func (h *DownloadHandler) updateProgress() {
     h.Progress.LastBytes = h.State.CurrentByte
 }
 
-func (h *DownloadHandler) displayProgress() {
-    h.Progress.Mutex.Lock()
-    h.State.Mutex.Lock()
-    defer h.Progress.Mutex.Unlock()
-    defer h.State.Mutex.Unlock()
+func (h *DownloadHandler) DisplayProgress() {
+	h.Progress.Mutex.Lock()
+	h.State.Mutex.Lock()
+	defer h.Progress.Mutex.Unlock()
+	defer h.State.Mutex.Unlock()
 
-    percent := float64(h.State.CurrentByte) / float64(h.State.TotalBytes) * 100
-    currentSpeedMBps := h.Progress.CurrentSpeed / (1024 * 1024) // Convert to MB/s
-    avgSpeedMBps := h.Progress.AvgSpeed / (1024 * 1024)         // Convert to MB/s
-    fmt.Printf("Progress: %.2f%%, Current Speed: %.2f MB/s, Avg Speed: %.2f MB/s, Downloaded: %d/%d bytes\n",
-        percent, currentSpeedMBps, avgSpeedMBps, h.State.CurrentByte, h.State.TotalBytes)
+	percent := float64(h.State.CurrentByte) / float64(h.State.TotalBytes) * 100
+	currentSpeedMBps := h.Progress.CurrentSpeed / (1024 * 1024)
+	avgSpeedMBps := h.Progress.AvgSpeed / (1024 * 1024)
+	fmt.Printf("Progress: %.2f%%, Current Speed: %.2f MB/s, Avg Speed: %.2f MB/s, Downloaded: %d/%d bytes\n",
+		percent, currentSpeedMBps, avgSpeedMBps, h.State.CurrentByte, h.State.TotalBytes)
 }

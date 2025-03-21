@@ -30,6 +30,14 @@ func (h *DownloadHandler) worker(id int, jobs <-chan chunk, errChan chan<- error
 			// we should start downloading assigned chunk
             partIndex := chunk.Start / h.CHUNK_SIZE // later we will use it for path and stuff
             // try downloadWithrange starting from chunks start till end of the chunk
+
+			h.State.Mutex.Lock()
+			if int(partIndex) < len(h.State.Completed) && h.State.Completed[partIndex] {
+				h.State.Mutex.Unlock()
+				continue // Skip already completed chunk
+			}
+			h.State.Mutex.Unlock()
+			
             if err := h.downloadWithRanges(chunk.Start, chunk.End); err != nil {
                 fmt.Printf("Worker %d: Failed chunk %d-%d: %v\n", id, chunk.Start, chunk.End, err)
                 h.State.Mutex.Lock()
