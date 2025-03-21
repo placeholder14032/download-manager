@@ -3,12 +3,11 @@ package download
 type State int
 
 const (
-	Paused State = iota
-	Cancelled
-	Done
+	Pending State = iota
 	Downloading
-	Starting
-	Retrying
+	Paused
+	Cancelled
 	Failed
-	Pending
+	Retrying
+	Done
 )
