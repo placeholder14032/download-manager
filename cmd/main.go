@@ -1,43 +1,47 @@
 package main
 
-import(
-	    "github.com/placeholder14032/download-manager/internal/download"
-		"net/http"
-		"fmt"
-		"time"
+import (
+    "github.com/placeholder14032/download-manager/internal/download"
+    "net/http"
+    "fmt"
+    "time"
 )
 
 func main() {
-	bandwidthLimit := int64(500 * 1024)
+    bandwidthLimit := int64(500 * 1024)
 
-	 download := download.Download{
-		URL:           "https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4",
-		FilePath:      "/Users/nazaninsmac/Downloads/big_buck_bunny_1mb.mp4",
-	 }
+    download := download.Download{
+        URL:      "https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4",
+        FilePath: "/Users/nazaninsmac/Downloads/big_buck_bunny_1mb.mp4",
+    }
 
-	// download.Handler = *download.NewDownloadHandler(&http.Client{Timeout: 10 * time.Second}, 256 * 1024, 5, 0)
-	download.Handler = *download.NewDownloadHandler(&http.Client{Timeout: 10 * time.Second},bandwidthLimit)
+    // Use an HTTP client with a timeout to avoid long network delays
+    client := &http.Client{
+        Timeout: 10 * time.Second,
+        Transport: &http.Transport{
+            ResponseHeaderTimeout: 5 * time.Second, // Timeout for reading response headers
+        },
+    }
+    download.Handler = *download.NewDownloadHandler(client, bandwidthLimit)
     handler := &download.Handler
 
-	// Periodically call DisplayProgress to check the speed
-	go func() {
-    	for {
-        	handler.DisplayProgress()
-        	time.Sleep(1 * time.Second)
-   		}
-	}()
+    // Periodically call DisplayProgress to check the speed
+    go func() {
+        for {
+            handler.DisplayProgress()
+            time.Sleep(1 * time.Second)
+        }
+    }()
 
-
-	fmt.Printf("Starting download from: %s\n", download.URL)
+    fmt.Printf("Starting download from: %s\n", download.URL)
     fmt.Printf("Saving to: %s\n", download.FilePath)
 
-	downloadErr := make(chan error, 1)
+    downloadErr := make(chan error, 1)
 
-
-	if err := handler.StartDownloading(); err != nil {
-		downloadErr <- fmt.Errorf("initial download failed: %v", err)
-		return
-	}
+    if err := handler.StartDownloading(); err != nil {
+        downloadErr <- fmt.Errorf("initial download failed: %v", err)
+        return
+    }
 }
 // ------------------------------------------------------------------------------------------------------- Serializer
 // package main

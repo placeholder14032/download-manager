@@ -12,6 +12,7 @@ type ProgressTracker struct {
     LastBytes      int64
     CurrentSpeed   float64 // Speed over the last update interval (bytes/s)
     AvgSpeed       float64 // Overall average speed (bytes/s)
+	SpeedSamples   []float64 // we will use this to make progress tracking more smooth (like the realetion we had in physics)
     Mutex          sync.Mutex
 }
 
@@ -33,6 +34,20 @@ func (h *DownloadHandler) updateProgress() {
     } else {
         h.Progress.CurrentSpeed = 0
     }
+
+	// Update moving average for CurrentSpeed
+    const maxSamples = 5 // Use last 5 samples for moving average
+    h.Progress.SpeedSamples = append(h.Progress.SpeedSamples, intervalElapsed)
+    if len(h.Progress.SpeedSamples) > maxSamples {
+        h.Progress.SpeedSamples = h.Progress.SpeedSamples[1:]
+    }
+
+	// Calculate currentSpeed using averaging samples we have 
+    var speedSum float64
+    for _, speed := range h.Progress.SpeedSamples {
+        speedSum += speed
+    }
+    h.Progress.CurrentSpeed = speedSum / float64(len(h.Progress.SpeedSamples))
 
     // Average speed (from start to now)
     if totalElapsed > 0 {

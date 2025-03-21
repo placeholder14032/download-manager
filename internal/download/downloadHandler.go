@@ -66,7 +66,11 @@ func (download *Download) NewDownloadHandler(client *http.Client,bandwidthLimit 
         ResumeChan: make(chan struct{}),
         ctx:      ctx,
         cancel:   cancel,
-        Progress: &ProgressTracker{StartTime: time.Now()},
+        Progress: &ProgressTracker{
+            StartTime:      time.Now(),
+            LastUpdateTime: time.Now(),
+            SpeedSamples:   make([]float64, 0, 5), // Initialize SpeedSamples
+        },
 		BandwidthLimit: bandwidthLimit,
     }
 
