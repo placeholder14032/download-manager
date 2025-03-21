@@ -22,6 +22,12 @@ var nameQueue, directoryQueue, startTimeQueue, endTimeQueue string
 var maxSimultaneousQueue, maxTryQueue, maxBandwidthQueue int64
 
 func DrawMainQueuePage(app *tview.Application) {
+	tabHeader := returnTabHeader()
+
+	header := tview.NewTextView().
+		SetText("[::b]SELECT ACTION[::-]").
+		SetDynamicColors(true)
+
 	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | f[1,2,3] to chnage tabs | Ctrl+q to quit")
 	selectOptionQueueFlex = tview.NewFlex()
 
@@ -30,6 +36,8 @@ func DrawMainQueuePage(app *tview.Application) {
 		AddItem("> EDIT QUEUE", "edit existing queue", 'b', func() { drawSelectQueue(app) })
 	selectOptionQueueFlex = tview.NewFlex().
 		SetDirection(tview.FlexRow).
+		AddItem(tabHeader, 1, 0, false).
+		AddItem(header, 1, 0, false).
 		AddItem(queueOptions, 4, 0, true).
 		AddItem(tview.NewTextView().SetBackgroundColor(tcell.ColorBlack), 0, 1, false).
 		AddItem(footer, 1, 0, false)
@@ -39,6 +47,12 @@ func DrawMainQueuePage(app *tview.Application) {
 }
 
 func drawNewQueue(app *tview.Application) {
+	tabHeader := returnTabHeader()
+
+	header := tview.NewTextView().
+		SetText("[::b]NEW QUEUE[::-]").
+		SetDynamicColors(true)
+
 	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | f[1,2,3] to chnage tabs | Ctrl+q to quit")
 	var currentStep, maxStep int = 0, 7
 	nameQueueInput := tview.NewInputField().SetLabel("Name: ").SetFieldBackgroundColor(tcell.ColorBlack)
@@ -116,6 +130,8 @@ func drawNewQueue(app *tview.Application) {
 
 	addQueueFlex = tview.NewFlex().
 		SetDirection(tview.FlexRow).
+		AddItem(tabHeader, 1, 0, false).
+		AddItem(header, 1, 0, false).
 		AddItem(inputFields[0], 1, 0, true).
 		AddItem(inputFields[1], 1, 0, true).
 		AddItem(inputFields[2], 1, 0, true).
@@ -147,6 +163,12 @@ func drawNewQueue(app *tview.Application) {
 	app.SetRoot(addQueueFlex, true).SetFocus(inputFields[0])
 }
 func drawSelectQueue(app *tview.Application) {
+	tabHeader := returnTabHeader()
+
+	header := tview.NewTextView().
+		SetText("[::b]SELECT QUEUE[::-]").
+		SetDynamicColors(true)
+
 	// for test
 	var listQueues []queue.Queue = []queue.Queue{queue.Queue{Name: "a", SaveDir: "A", MaxConcurrent: 1, MaxBandwidth: 2, TimeRange: queue.TimeRange{time.Now(), time.Now()}, MaxRetries: 3}}
 	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | f[1,2,3] to chnage tabs | Ctrl+q to quit")
@@ -163,6 +185,8 @@ func drawSelectQueue(app *tview.Application) {
 
 	selectQueueFlex = tview.NewFlex().
 		SetDirection(tview.FlexRow).
+		AddItem(tabHeader, 1, 0, false).
+		AddItem(header, 1, 0, false).
 		AddItem(selectOptions, 2*listHeight, 0, true).
 		AddItem(tview.NewTextView().SetBackgroundColor(tcell.ColorBlack), 0, 1, false).
 		AddItem(footer, 1, 0, false)
@@ -176,6 +200,12 @@ func getTimeString(t time.Time) string {
 }
 
 func drawEditQueue(app *tview.Application) {
+	tabHeader := returnTabHeader()
+
+	header := tview.NewTextView().
+		SetText("[::b]EDIT QUEUE[::-]").
+		SetDynamicColors(true)
+
 	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | f[1,2,3] to chnage tabs | Ctrl+q to quit")
 	var currentStep, maxStep int = 0, 6
 	directoryQueueInput := tview.NewInputField().SetLabel("Directory: ").SetText(selectedQueue.SaveDir).SetFieldBackgroundColor(tcell.ColorBlack)
@@ -244,6 +274,8 @@ func drawEditQueue(app *tview.Application) {
 
 	editQueueFlex = tview.NewFlex().
 		SetDirection(tview.FlexRow).
+		AddItem(tabHeader, 1, 0, false).
+		AddItem(header, 1, 0, false).
 		AddItem(inputFields[0], 1, 0, true).
 		AddItem(inputFields[1], 1, 0, true).
 		AddItem(inputFields[2], 1, 0, true).
@@ -272,4 +304,28 @@ func drawEditQueue(app *tview.Application) {
 	})
 
 	app.SetRoot(editQueueFlex, true).SetFocus(inputFields[0])
+}
+
+func returnTabHeader() *tview.Flex {
+	tabHeader := tview.NewFlex().SetDirection(tview.FlexColumn)
+	tab1 := tview.NewTextView().
+		SetText("Tab 1").
+		SetTextAlign(tview.AlignCenter)
+
+	tab2 := tview.NewTextView().
+		SetText("tab 2").
+		SetTextAlign(tview.AlignCenter)
+
+	tab3 := tview.NewTextView().
+		SetText("Tab 3")
+	// had to write these seperate for text to be shown
+	tab3.SetTextAlign(tview.AlignCenter).
+		SetBackgroundColor(tcell.ColorBlue)
+
+	tabHeader.AddItem(tview.NewTextView().SetBackgroundColor(tcell.ColorBlack), 0, 1, false).
+		AddItem(tab1, 10, 0, false).
+		AddItem(tab2, 10, 0, false).
+		AddItem(tab3, 10, 0, false).
+		AddItem(tview.NewTextView().SetBackgroundColor(tcell.ColorBlack), 0, 1, false)
+	return tabHeader
 }
