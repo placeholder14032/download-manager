@@ -4,7 +4,7 @@ import(
 	"runtime"
 )
 
-func (h *DownloadHandler) calculateOptimalChunkSize(contentLength int) int{
+func (h *DownloadHandler) calculateOptimalChunkSize(contentLength int64) int64{
 	const (
 		minChunkSize = 1024 * 1024   // 1MB minimum chunk size
 		maxChunkSize = 10 * 1024 * 1024 // 10MB maximum chunk size
@@ -31,7 +31,7 @@ func (h *DownloadHandler) calculateOptimalChunkSize(contentLength int) int{
 }
 
 
-func (h *DownloadHandler) calculateOptimalWorkerCount(contentLength int) int{
+func (h *DownloadHandler) calculateOptimalWorkerCount(contentLength int64) int{
 	const (
 		defaultWorkers = 4  
 		maxWorkers     = 16 // preventing overload
@@ -45,8 +45,8 @@ func (h *DownloadHandler) calculateOptimalWorkerCount(contentLength int) int{
 	cpuCores := runtime.NumCPU()
 	h.WORKERS_COUNT = cpuCores
 
-	if h.PartsCount < h.WORKERS_COUNT {
-		h.WORKERS_COUNT = h.PartsCount 
+	if int(h.PartsCount) < h.WORKERS_COUNT {
+		h.WORKERS_COUNT = int(h.PartsCount)
 	}
 
 	// bounding

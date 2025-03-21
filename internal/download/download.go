@@ -1,8 +1,6 @@
 package download
 
 import (
-	//"encoding/json"
-	//"fmt"
 	"encoding/json"
 	"net/http"
 )
