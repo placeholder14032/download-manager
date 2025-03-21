@@ -20,7 +20,7 @@ func main() {
 		FilePath: "/Users/nazaninsmac/Downloads/testfile.tar.gz",
 	}
 
-	dh := dl.NewDownloadHandler(client, 64*1024, 4, 0)
+	dh := dl.NewDownloadHandler(client, 512*1024, 4, 0)
 	fmt.Printf("Starting download from: %s\n", dl.URL)
 	fmt.Printf("Saving to: %s\n", dl.FilePath)
 

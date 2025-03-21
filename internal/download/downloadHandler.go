@@ -20,10 +20,12 @@ type DownloadHandler struct {
     FilePath      string
     State         *DownloadState
 
-	ctx           context.Context    // Add context
-    cancel        context.CancelFunc // Add cancel function
-    PauseChan     chan struct{}      // Keep this for signaling pause
-    ResumeChan    chan struct{}      // Add channel for resume
+	ctx           context.Context    
+    cancel        context.CancelFunc
+    PauseChan     chan struct{}      
+    ResumeChan    chan struct{}  
+	
+	Progress        *ProgressTracker
 }
 
 type DownloadState struct {
@@ -55,6 +57,10 @@ func (download *Download) NewDownloadHandler(client *http.Client, chunkSize int6
         ResumeChan:    make(chan struct{}),
 		ctx:           ctx,
         cancel:        cancel,
+
+		Progress: &ProgressTracker{
+            StartTime: time.Now(),
+        },
     }
     return dh
 }
@@ -93,6 +99,25 @@ func (h *DownloadHandler) StartDownloading() error {
 		h.distributeJobs(jobs, int(contentLength))
 		// close(jobs) // close jobs channel after all tasks are sent 
 	}()
+
+	// Progress reporting goroutine
+    go func() {
+        ticker := time.NewTicker(1 * time.Second) // Update every second
+        defer ticker.Stop()
+        for {
+            select {
+            case <-h.ctx.Done():
+                return
+            case <-ticker.C:
+                h.updateProgress()
+                h.displayProgress()
+            case <-done:
+                h.updateProgress()
+                h.displayProgress()
+                return
+            }
+        }
+    }()
 
 	// waiting for workers to be done
 	go func() {
