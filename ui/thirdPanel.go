@@ -324,6 +324,7 @@ func drawEditQueue(app *tview.Application) {
 }
 
 func drawDeleteQueue(app *tview.Application) {
+	errorTextView := tview.NewTextView().SetText("").SetTextColor(tcell.ColorRed)
 	errorView := ""
 	tabHeader := returnTabHeader()
 
@@ -334,28 +335,34 @@ func drawDeleteQueue(app *tview.Application) {
 	listQueues := controller.GetQueues()
 	if len(listQueues) == 0 {
 		errorView = "No Queues Available! ** "
+		errorTextView.SetText(errorView)
 	}
 	footer := tview.NewTextView().SetText("Press arrow keys to navigate | Enter to confirm | f[1,2,3] to chnage tabs | Ctrl+q to quit")
 
 	var selectOptions = tview.NewList()
 	for i, q := range listQueues {
 		selectOptions.AddItem(fmt.Sprintf("> %s", q.Name), "", rune('a'+i), func() {
-			controller.DeleteQueue(q.ID)
-			DrawMainQueuePage(app)
+			err := controller.DeleteQueue(q.ID)
+			if err != nil {
+				errorView = err.Error()
+				errorTextView.SetText(errorView)
+			} else {
+				DrawMainQueuePage(app)
+			}
 		})
 	}
 
 	listHeight := len(listQueues)
 
-	selectQueueFlex = tview.NewFlex().
+	deleteQueueFlex = tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(tabHeader, 1, 0, false).
 		AddItem(header, 1, 0, false).
 		AddItem(selectOptions, 2*listHeight, 0, true).
 		AddItem(tview.NewTextView().SetBackgroundColor(tcell.ColorBlack), 0, 1, false).
-		AddItem(tview.NewTextView().SetText(errorView).SetTextColor(tcell.ColorRed), 1, 0, false).
+		AddItem(errorTextView, 1, 0, false).
 		AddItem(footer, 1, 0, false)
-	app.SetRoot(selectQueueFlex, true).SetFocus(selectOptions)
+	app.SetRoot(deleteQueueFlex, true).SetFocus(selectOptions)
 }
 
 func returnTabHeader() *tview.Flex {
