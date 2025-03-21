@@ -37,7 +37,7 @@ func (h *DownloadHandler) worker(id int, jobs <-chan chunk, errChan chan<- error
 				continue // Skip already completed chunk
 			}
 			h.State.Mutex.Unlock()
-			
+
             if err := h.downloadWithRanges(chunk.Start, chunk.End); err != nil {
                 fmt.Printf("Worker %d: Failed chunk %d-%d: %v\n", id, chunk.Start, chunk.End, err)
                 h.State.Mutex.Lock()

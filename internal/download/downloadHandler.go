@@ -216,7 +216,7 @@ func (h *DownloadHandler) downloadWithRanges(start int64, end int64) error {
 
 	// Use a custom reader to count actual bytes read
 	var totalRead int64
-	counting := &countingReader{reader: resp.Body, count: &totalRead}
+	counting := &countingReader{reader: resp.Body, count: &totalRead, handler: h}
 
 	// Apply bandwidth limit if set, wrapping the countingReader
 	var reader io.Reader = counting
@@ -224,7 +224,9 @@ func (h *DownloadHandler) downloadWithRanges(start int64, end int64) error {
 		reader = NewLimitedReader(counting, h.BandwidthLimit)
 	}
 
-    written, err := io.Copy(file, reader)
+	// Write the chunk to the file
+	buffer := make([]byte, 4*1024) // 4 KB buffer
+	written, err := io.CopyBuffer(file, reader, buffer)
     if err != nil {
         return fmt.Errorf("failed to write chunk: %v", err)
     }

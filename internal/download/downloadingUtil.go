@@ -47,11 +47,20 @@ func (h *DownloadHandler) IsAcceptRangeSupported() (bool, int64, error) {
 type countingReader struct {
     reader io.Reader
     count  *int64
+    handler *DownloadHandler // for more accuracy, updatinf current byte stuff
 }
 
 func (r *countingReader) Read(p []byte) (n int, err error) {
     n, err = r.reader.Read(p)
     *r.count += int64(n)
+    // Update the DownloadHandler's CurrentByte
+    r.handler.State.Mutex.Lock()
+    r.handler.State.CurrentByte += int64(n)
+    r.handler.State.Mutex.Unlock()
+
+    // Update progress after each read
+    r.handler.updateProgress()
+    
     return n, err
 }
 

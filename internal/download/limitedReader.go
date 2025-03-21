@@ -3,6 +3,7 @@ package download
 import (
     "io"
     "time"
+	"fmt"
 )
 
 type LimitedReader struct {
@@ -28,15 +29,20 @@ if n > 0 { // n=0 means no limit
 	// Calculate how long we *should* have taken to read this many bytes
 	expectedDuration := float64(lr.bytesRead) / float64(lr.limit) // in seconds
 	elapsed := time.Since(lr.startTime).Seconds()
+	fmt.Printf("LimitedReader: Read %d bytes, total %d, elapsed %.2f s, expected %.2f s\n", n, lr.bytesRead, elapsed, expectedDuration)
 
 	// If we've read too fast, sleep to throttle the speed
 	if elapsed < expectedDuration {
 		sleepDuration := time.Duration((expectedDuration - elapsed) * float64(time.Second))
+		fmt.Printf("LimitedReader: Read %d bytes, elapsed %.2f s, expected %.2f s, sleeping for %.2f ms\n",
+			n, elapsed, expectedDuration, float64(sleepDuration)/float64(time.Millisecond))
 		time.Sleep(sleepDuration)
 	}
 
-	// Reset the start time and bytes read if we've waited for at least a second
-	if elapsed >= 1 {
+	// Reset counters every second to avoid problem stuff we faced
+	elapsedSinceStart := time.Since(lr.startTime).Seconds()
+	if elapsedSinceStart >= 1 {
+		fmt.Printf("LimitedReader: Resetting counters after %.2f s\n", elapsed)
 		lr.bytesRead = 0
 		lr.startTime = time.Now()
 	}

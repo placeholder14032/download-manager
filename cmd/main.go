@@ -1,3 +1,45 @@
+package main
+
+import(
+	    "github.com/placeholder14032/download-manager/internal/download"
+		"net/http"
+		"fmt"
+		"time"
+)
+
+func main() {
+	bandwidthLimit := int64(500 * 1024)
+
+	 download := download.Download{
+		URL:           "https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4",
+		FilePath:      "/Users/nazaninsmac/Downloads/big_buck_bunny_1mb.mp4",
+	 }
+
+	// download.Handler = *download.NewDownloadHandler(&http.Client{Timeout: 10 * time.Second}, 256 * 1024, 5, 0)
+	download.Handler = *download.NewDownloadHandler(&http.Client{Timeout: 10 * time.Second},bandwidthLimit)
+    handler := &download.Handler
+
+	// Periodically call DisplayProgress to check the speed
+	go func() {
+    	for {
+        	handler.DisplayProgress()
+        	time.Sleep(1 * time.Second)
+   		}
+	}()
+
+
+	fmt.Printf("Starting download from: %s\n", download.URL)
+    fmt.Printf("Saving to: %s\n", download.FilePath)
+
+	downloadErr := make(chan error, 1)
+
+
+	if err := handler.StartDownloading(); err != nil {
+		downloadErr <- fmt.Errorf("initial download failed: %v", err)
+		return
+	}
+}
+// ------------------------------------------------------------------------------------------------------- Serializer
 // package main
 
 // import (
@@ -382,35 +424,35 @@
 // 	fmt.Println("Exiting program")
 // }
 // ---------------------------------------------------------------------------------------------------- SIMPLE W/O PAUSE ...
-package main
+// package main
 
-import(
-	    "github.com/placeholder14032/download-manager/internal/download"
-		"net/http"
-		"fmt"
-		"time"
-)
+// import(
+// 	    "github.com/placeholder14032/download-manager/internal/download"
+// 		"net/http"
+// 		"fmt"
+// 		"time"
+// )
 
-func main() {
-	 download := download.Download{
-		URL:           "https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4",
-		FilePath:      "/Users/nazaninsmac/Downloads/big_buck_bunny_1mb.mp4",
-	 }
+// func main() {
+// 	 download := download.Download{
+// 		URL:           "https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4",
+// 		FilePath:      "/Users/nazaninsmac/Downloads/big_buck_bunny_1mb.mp4",
+// 	 }
 
-	// download.Handler = *download.NewDownloadHandler(&http.Client{Timeout: 10 * time.Second}, 256 * 1024, 5, 0)
-	download.Handler = *download.NewDownloadHandler(&http.Client{Timeout: 10 * time.Second})
-    handler := &download.Handler
-
-
-
-	fmt.Printf("Starting download from: %s\n", download.URL)
-    fmt.Printf("Saving to: %s\n", download.FilePath)
-
-	downloadErr := make(chan error, 1)
+// 	// download.Handler = *download.NewDownloadHandler(&http.Client{Timeout: 10 * time.Second}, 256 * 1024, 5, 0)
+// 	download.Handler = *download.NewDownloadHandler(&http.Client{Timeout: 10 * time.Second})
+//     handler := &download.Handler
 
 
-	if err := handler.StartDownloading(); err != nil {
-		downloadErr <- fmt.Errorf("initial download failed: %v", err)
-		return
-	}
-}
+
+// 	fmt.Printf("Starting download from: %s\n", download.URL)
+//     fmt.Printf("Saving to: %s\n", download.FilePath)
+
+// 	downloadErr := make(chan error, 1)
+
+
+// 	if err := handler.StartDownloading(); err != nil {
+// 		downloadErr <- fmt.Errorf("initial download failed: %v", err)
+// 		return
+// 	}
+// }
