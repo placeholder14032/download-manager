@@ -24,7 +24,7 @@ func (m *Manager) answerAddDL(r util.Request) {
 		m.answerBadRequest(fmt.Sprintf(BAD_REQ_BODY_TYPE, "Add Download", "BodyAddDownload"))
 		return
 	}
-	err := m.addDownload(body.QueueID, body.URL, body.FileName)
+	err := m.addDownload(body.QueueID, body.URL)
 	m.answerERR(err)
 }
 
