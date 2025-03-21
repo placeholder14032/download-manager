@@ -18,6 +18,7 @@ const (
 	DOWNLOAD_IS_RUNNING = "download with id %d is still running"
 	DOWNLOADS_ARE_RUNNING = "downloads are running in queueu: %d: can not modify"
 	QUEUE_IS_FULL = "Queue with id %d is full and cant run anymore download until the others are finished"
+	DIRECTORY_DOESNT_EXIST = "directory `%s` doesn't exist choose another one"
 )
 
 func (m *Manager) findQueueIndex(qID int64) int { // maybe can be used to clean up some dublicate code
@@ -40,12 +41,32 @@ func (m *Manager) findDownloadQueueIndex(dlID int64) (int, int) {
 	return -1, -1
 }
 
+func checkDirExists(dir string) bool {
+	fileInfo, err := os.Stat(dir)
+	if err != nil {
+		return false
+	}
+	return fileInfo.IsDir()
+}
+
+func checkParDirExists(filePath string) bool {
+	return checkDirExists(path.Dir(filePath))
+}
+
 func determineFilePath(directory string, url string) string {
 	// joins the directory with the filename
 	// if the directory doesn't have the last slash (/) it will usse the parent
 	// because it is seen as a file in that case
 	return path.Join(directory, path.Base(url))
 	// changed from Path.Dir(Directory) because it might cause problems with omitting the last folder
+}
+
+// returns the name if it's not empty. otherwise creates an unempty name for it
+func chooseQueueName(name string, id int64) string {
+	if name != "" {
+		return name
+	}
+	return fmt.Sprintf("queue [%d]", id)
 }
 
 func createDownload(dlID int64, url string, filePath string, maxRetry int64) download.Download {
@@ -68,6 +89,7 @@ func convertToStaticQueue(q *queue.Queue) util.QueueBody {
 		MaxSimul: q.MaxConcurrent,
 		MaxBandWidth: q.MaxBandwidth,
 		MaxRetries: q.MaxRetries,
+		HasTimeConstraint: q.HasTimeConstraint,
 		TimeRange: q.TimeRange,
 	}
 }
@@ -253,15 +275,20 @@ func (m *Manager) deleteDownload(dlID int64) error {
 // gets the settings from a body
 // the id will be ignored so it should probably be -1
 func (m *Manager) addQueue(body util.QueueBody) error {
+	if !checkDirExists(body.Directory) {
+		return fmt.Errorf(DIRECTORY_DOESNT_EXIST, body.Directory)
+	}
 	q := queue.Queue{
 		ID: m.lastQID,
-		Name: fmt.Sprintf("queue %d", m.lastQID),
+		Name: chooseQueueName(body.Name, m.lastQID),
 		DownloadLists: make([]download.Download, 0),
 		SaveDir: body.Directory,
 		MaxConcurrent: body.MaxSimul,
 		MaxBandwidth: body.MaxBandWidth,
 		MaxRetries: body.MaxRetries,
+		HasTimeConstraint: body.HasTimeConstraint,
 		TimeRange: body.TimeRange,
+		Disabled: false,
 	}
 	m.lastQID++
 	m.qs = append(m.qs, q)
@@ -269,6 +296,9 @@ func (m *Manager) addQueue(body util.QueueBody) error {
 }
 
 func (m *Manager) editQueue(body util.QueueBody) error {
+	if !checkDirExists(body.Directory) {
+		return fmt.Errorf(DIRECTORY_DOESNT_EXIST, body.Directory)
+	}
 	qid := body.ID;
 	i := m.findQueueIndex(qid)
 	if checkRunningDLsInQueue(m.qs[i]) {
