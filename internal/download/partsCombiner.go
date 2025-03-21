@@ -10,19 +10,29 @@ import (
 )
 
 type PartsCombiner struct {
-    BufferSize int // Size of the copy buffer 
-    ContentLength int // Total size of the file
+    BufferSize int // Size of the copy buffer - 32 kb default (fixed for now)
+    ContentLength int64// Total size of the file
     PartsCount int 
+	ChunkSize     int64
 }
-func NewPartsCombiner() *PartsCombiner {
-    return &PartsCombiner{BufferSize: 32 * 1024} 
+func NewPartsCombiner(contentLength int64, partsCount int, chunkSize int64) *PartsCombiner {
+    return &PartsCombiner{
+        BufferSize:    32 * 1024,
+        ContentLength: contentLength,
+        PartsCount:    partsCount,
+        ChunkSize:     chunkSize,
+    }
 }
 
-func (c *PartsCombiner) CombineParts(filePath string, contentLength, partsCount int) error {
+func (c *PartsCombiner) CombineParts(filePath string, contentLength int64, partsCount int) error {
+	fmt.Println("Starting combine parts")
+	
+	// if it's already completed we don't need to do anything
     if c.isFileComplete(filePath, contentLength) {
         return nil
     }
 
+	// finding file parts and making sure every part is exisiting
     partFiles, err := c.findPartFiles(filePath)
     if err != nil {
         return err
@@ -30,31 +40,36 @@ func (c *PartsCombiner) CombineParts(filePath string, contentLength, partsCount 
     if len(partFiles) == 0 {
         return fmt.Errorf("no part files found to combine")
     }
-
+	
+	// mapping parts and their index stuff
     partsMap, err := c.parsePartFiles(filePath, partFiles)
     if err != nil {
         return err
     }
+	// Verify all parts exist	
+	if err := c.verifyParts(partsMap, partsCount); err != nil {
+		return err
+	}
 
-    if err := c.verifyParts(partsMap, partsCount); err != nil {
+	// merging parts
+    if err := c.mergeParts(filePath, partsMap); err != nil {
         return err
     }
 
-    if err := c.mergeParts(filePath, partsMap, partsCount); err != nil {
-        return err
-    }
-
+	// making sure if merged size match the contentLength we expected
     if err := c.verifyCombinedFile(filePath, contentLength); err != nil {
         return err
     }
 
+	// cleaning up part files we don't need anymore
     c.cleanupPartFiles(partFiles)
+	fmt.Println("Combine parts completed successfully")
     return nil
 }
 
-func (c *PartsCombiner) isFileComplete(filePath string, contentLength int) bool {
+func (c *PartsCombiner) isFileComplete(filePath string, contentLength int64) bool {
     info, err := os.Stat(filePath)
-    return err == nil && info.Size() == int64(contentLength)
+    return err == nil && info.Size() == contentLength
 }
 
 func (c *PartsCombiner) findPartFiles(filePath string) ([]string, error) {
@@ -92,7 +107,8 @@ func (c *PartsCombiner) verifyParts(partsMap map[int]string, partsCount int) err
     return nil
 }
 
-func (c *PartsCombiner) mergeParts(filePath string, partsMap map[int]string, partsCount int) error {
+func (c *PartsCombiner) mergeParts(filePath string, partsMap map[int]string) error {
+    fmt.Println("Merging parts...")
     combinedFile, err := os.Create(filePath)
     if err != nil {
         return fmt.Errorf("failed to create final file: %v", err)
@@ -101,36 +117,37 @@ func (c *PartsCombiner) mergeParts(filePath string, partsMap map[int]string, par
 
     buffer := make([]byte, c.BufferSize)
     totalWritten := int64(0)
-    for i := 0; i < partsCount; i++ {
+
+    for i := 0; i < c.PartsCount; i++ {
         partFilePath := partsMap[i]
         partFile, err := os.Open(partFilePath)
         if err != nil {
             return fmt.Errorf("failed to open part %d: %v", i, err)
         }
+        defer partFile.Close()
+
         info, err := partFile.Stat()
         if err != nil {
-            partFile.Close()
             return fmt.Errorf("failed to stat part %d: %v", i, err)
         }
         partSize := info.Size()
         if partSize == 0 {
-            partFile.Close()
             return fmt.Errorf("part %d is empty", i)
         }
-        expectedSize := int64(10240)
-        if i == partsCount-1 { // Last part
-            expectedSize = int64( c.ContentLength % 10240)
-            if expectedSize == 0 {
-                expectedSize = 10240
+
+        expectedSize := c.ChunkSize
+        if i == c.PartsCount-1 {
+            remaining := c.ContentLength % c.ChunkSize
+            if remaining != 0 {
+                expectedSize = remaining
             }
         }
+
         if partSize != expectedSize {
-            partFile.Close()
-            return fmt.Errorf("part %d size mismatch before copy: got %d, want %d", i, partSize, expectedSize)
+            return fmt.Errorf("part %d size mismatch: got %d, want %d", i, partSize, expectedSize)
         }
 
         written, err := io.CopyBuffer(combinedFile, partFile, buffer)
-        partFile.Close()
         if err != nil {
             return fmt.Errorf("failed to copy part %d: %v", i, err)
         }
@@ -144,18 +161,18 @@ func (c *PartsCombiner) mergeParts(filePath string, partsMap map[int]string, par
     return nil
 }
 
-func (h *PartsCombiner) verifyCombinedFile(filePath string, contentLength int) error {
+func (c *PartsCombiner) verifyCombinedFile(filePath string, contentLength int64) error {
     info, err := os.Stat(filePath)
     if err != nil {
         return fmt.Errorf("failed to verify final file: %v", err)
     }
-    if info.Size() != int64(contentLength) {
+    if info.Size() != contentLength {
         return fmt.Errorf("final file size mismatch: got %d, want %d", info.Size(), contentLength)
     }
     return nil
 }
 
-func (h *PartsCombiner) cleanupPartFiles(partFiles []string) {
+func (c *PartsCombiner) cleanupPartFiles(partFiles []string) {
     for _, partFile := range partFiles {
         if err := os.Remove(partFile); err != nil {
             fmt.Printf("Warning: failed to remove part file %s: %v\n", partFile, err)
