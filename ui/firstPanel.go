@@ -13,6 +13,7 @@ var newDownloadFlex *tview.Flex
 var urlDownload, nameDownload, queueDownload string
 
 func DrawNewDownloadPage(app *tview.Application) {
+	errorView := ""
 	tabHeader := tview.NewFlex().SetDirection(tview.FlexColumn)
 	tab1 := tview.NewTextView().
 		SetText("Tab 1")
@@ -45,6 +46,9 @@ func DrawNewDownloadPage(app *tview.Application) {
 	var inputFields []*tview.InputField = []*tview.InputField{nameDownloadInput, urlDownloadInput}
 
 	allQueues := controller.GetQueues()
+	if len(allQueues) == 0 {
+		errorView += "No Queues Available! ** "
+	}
 	var allQueueNames []string
 	for _, q := range allQueues {
 		allQueueNames = append(allQueueNames, strconv.FormatInt(q.ID, 32))
@@ -56,7 +60,7 @@ func DrawNewDownloadPage(app *tview.Application) {
 	isQueueDropDownOpen := false
 	queueDropDown.SetSelectedFunc(func(text string, index int) {
 		controller.AddDownload(urlDownload, allQueues[index].ID, nameDownload)
-		DrawAllDownloads(app)
+		drawNewQueue(app)
 	})
 	nameDownloadInput.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
@@ -83,6 +87,7 @@ func DrawNewDownloadPage(app *tview.Application) {
 		AddItem(inputFields[1], 1, 0, true).
 		AddItem(queueDropDown, 1, 0, true).
 		AddItem(tview.NewTextView().SetBackgroundColor(tcell.ColorBlack), 0, 1, false).
+		AddItem(tview.NewTextView().SetText(errorView).SetTextColor(tcell.ColorRed), 1, 0, false).
 		AddItem(footer, 1, 0, false)
 
 	newDownloadFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
