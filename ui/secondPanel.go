@@ -1,4 +1,4 @@
-package cmd
+package ui
 
 import (
 	"strconv"
@@ -71,7 +71,7 @@ func DrawAllDownloads(app *tview.Application) {
 	allDownloads := []DownloadBody{
 		{URL: "https://example.com/file1.zip", Status: download.Paused, Progress: 0, Speed: 0, DownloadName: "name1", QueueName: "moz"},
 		{URL: "https://example.com/file2.iso", Status: download.Done, Progress: 0, Speed: 0, DownloadName: "name2", QueueName: "khiar"},
-		{URL: "https://example.com/file3.pdf", Status: download.Starting, Progress: 0, Speed: 0, DownloadName: "name3", QueueName: "porteghal"},
+		//{URL: "https://example.com/file3.pdf", Status: download.Starting, Progress: 0, Speed: 0, DownloadName: "name3", QueueName: "porteghal"},
 		{URL: "https://example.com/file4.mp4", Status: download.Retrying, Progress: 0, Speed: 0, DownloadName: "name4", QueueName: "sib"},
 	}
 

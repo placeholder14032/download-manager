@@ -2,7 +2,7 @@
 // toDo: chnage the endTime after editing
 // toDo: get queues in drawing selectQueueFlex
 
-package cmd
+package ui
 
 import (
 	"fmt"
