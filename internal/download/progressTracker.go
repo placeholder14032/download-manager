@@ -1,123 +1,74 @@
 package download
 
-import (
-	"fmt"
+import(
 	"sync"
 	"time"
+	"fmt"
 )
 
 type ProgressTracker struct {
-	TotalBytes    int64
-	BytesDone     int64
-	StartTime     time.Time
-	LastUpdate    time.Time
-	Mutex         sync.Mutex
-
-	delta                 time.Duration // the delta we want to calculate current speed with (eg. 0.5-1 sec)
-	downloadedBytesInDelta int64        // bytes downloaded in current delta window
-	timeStampStart        time.Time     // start time of current delta window
+    StartTime      time.Time
+    LastUpdateTime time.Time
+    LastBytes      int64
+    CurrentSpeed   float64 // Speed over the last update interval (bytes/s)
+    AvgSpeed       float64 // Overall average speed (bytes/s)
+	SpeedSamples   []float64 // we will use this to make progress tracking more smooth (like the realetion we had in physics)
+    Mutex          sync.Mutex
 }
 
-func NewProgressTracker(totalBytes int64, delta time.Duration) *ProgressTracker {
-	now := time.Now()
-	return &ProgressTracker{
-		TotalBytes: totalBytes,
-		BytesDone: 0,
-		StartTime: now,
-		LastUpdate: now,
-		delta: delta,
-		timeStampStart: now,
-		downloadedBytesInDelta: 0,
-	}
 
-}
-
-func (pt *ProgressTracker) UpdateBytesDone(currentBytes int64) {
-    pt.Mutex.Lock()
-    defer pt.Mutex.Unlock()
-
-    if currentBytes > pt.TotalBytes {
-        currentBytes = pt.TotalBytes
-    }
+func (h *DownloadHandler) updateProgress() {
+    h.Progress.Mutex.Lock()
+    defer h.Progress.Mutex.Unlock()
+    h.State.Mutex.Lock()
+    defer h.State.Mutex.Unlock()
 
     now := time.Now()
-    bytesDelta := currentBytes - pt.BytesDone
-    
-    // Update speed calculation
-    timePassed := now.Sub(pt.timeStampStart)
-    if timePassed >= pt.delta {
-        pt.downloadedBytesInDelta = bytesDelta
-        pt.timeStampStart = now
+    totalElapsed := now.Sub(h.Progress.StartTime).Seconds()
+    intervalElapsed := now.Sub(h.Progress.LastUpdateTime).Seconds()
+
+    // Current speed (over the last interval)
+    if intervalElapsed > 0 {
+        bytesSinceLast := h.State.CurrentByte - h.Progress.LastBytes
+        h.Progress.CurrentSpeed = float64(bytesSinceLast) / intervalElapsed
     } else {
-        pt.downloadedBytesInDelta += bytesDelta
+        h.Progress.CurrentSpeed = 0
     }
 
-    pt.BytesDone = currentBytes
-    pt.LastUpdate = now
+	// Update moving average for CurrentSpeed
+    const maxSamples = 5 // Use last 5 samples for moving average
+    h.Progress.SpeedSamples = append(h.Progress.SpeedSamples, h.Progress.CurrentSpeed)
+        if len(h.Progress.SpeedSamples) > maxSamples {
+        h.Progress.SpeedSamples = h.Progress.SpeedSamples[1:]
+    }
+
+	// Calculate currentSpeed using averaging samples we have 
+    var speedSum float64
+    for _, speed := range h.Progress.SpeedSamples {
+        speedSum += speed
+    }
+    h.Progress.CurrentSpeed = speedSum / float64(len(h.Progress.SpeedSamples))
+
+    // Average speed (from start to now)
+    if totalElapsed > 0 {
+        h.Progress.AvgSpeed = float64(h.State.CurrentByte) / totalElapsed
+    } else {
+        h.Progress.AvgSpeed = 0
+    }
+
+    h.Progress.LastUpdateTime = now
+    h.Progress.LastBytes = h.State.CurrentByte
 }
 
-func (pt *ProgressTracker) OverallSpeed() float64 {
-	pt.Mutex.Lock()
-	defer pt.Mutex.Unlock()
+func (h *DownloadHandler) DisplayProgress() {
+	h.Progress.Mutex.Lock()
+	h.State.Mutex.Lock()
+	defer h.Progress.Mutex.Unlock()
+	defer h.State.Mutex.Unlock()
 
-	elapsed := pt.LastUpdate.Sub(pt.StartTime).Seconds()
-	if elapsed == 0 {
-		return 0
-	}
-	return float64(pt.BytesDone) / elapsed
-}
-func (pt *ProgressTracker) OverallSpeedFormated() string {
-	return formatSpeed(pt.OverallSpeed())
-}
-
-
-
-func (pt *ProgressTracker) CurrentSpeed() float64 {
-	pt.Mutex.Lock()
-	defer pt.Mutex.Unlock()
-
-	// Calculate actual time passed since last update
-	timePassed := time.Since(pt.timeStampStart).Seconds()
-
-	// Avoid division by zero
-	if timePassed == 0 {
-		return 0
-	}
-
-	// Calculate current speed using actual bytes downloaded in the delta period
-	// This gives us a more accurate "instantaneous" speed measurement
-	return float64(pt.downloadedBytesInDelta) / timePassed
-}
-
-func (pt *ProgressTracker) CurrentSpeedFormatted() string {
-	return formatSpeed(pt.CurrentSpeed())
-}
-
-func (pt *ProgressTracker) GetProgress() float64{
-	pt.Mutex.Lock()
-	defer pt.Mutex.Unlock()
-
-	if pt.TotalBytes == 0 {
-		return 0
-	}
-	return float64(pt.BytesDone) / float64(pt.TotalBytes) * 100
-}
-
-func formatSpeed(bytesPerSec float64) string {
-	const (
-		KB = 1024
-		MB = 1024 * KB
-		GB = 1024 * MB
-	)
-
-	switch {
-	case bytesPerSec >= GB:
-		return fmt.Sprintf("%.2f GB/s", bytesPerSec/float64(GB))
-	case bytesPerSec >= MB:
-		return fmt.Sprintf("%.2f MB/s", bytesPerSec/float64(MB))
-	case bytesPerSec >= KB:
-		return fmt.Sprintf("%.2f KB/s", bytesPerSec/float64(KB))
-	default:
-		return fmt.Sprintf("%.2f B/s", bytesPerSec)
-	}
+	percent := float64(h.State.CurrentByte) / float64(h.State.TotalBytes) * 100
+	currentSpeedMBps := h.Progress.CurrentSpeed / (1024 * 1024)
+	avgSpeedMBps := h.Progress.AvgSpeed / (1024 * 1024)
+	fmt.Printf("Progress: %.2f%%, Current Speed: %.2f MB/s, Avg Speed: %.2f MB/s, Downloaded: %d/%d bytes\n",
+		percent, currentSpeedMBps, avgSpeedMBps, h.State.CurrentByte, h.State.TotalBytes)
 }

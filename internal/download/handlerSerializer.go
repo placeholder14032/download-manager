@@ -5,116 +5,124 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"context"
+	"time"
 )
-
-type SavedDownloadState struct{
-	URL string
-	FilePath string
-	CHUNK_SIZE int
-	CompletedParts []bool
-	CurrByte int64
-	TotalBytes int64
-	PartsCount int
-	IsPaused bool
-	IncompleteParts []int
+type SavedDownloadState struct {
+	URL             string
+	FilePath        string
+	CHUNK_SIZE      int64
+	CompletedParts  []bool
+	CurrByte        int64
+	TotalBytes      int64
+	PartsCount      int64 
+	IsPaused        bool
+	IncompleteParts []int64 
 }
 
-func (h *DownloadHandler) Export() (*SavedDownloadState, error){
-		h.State.Mutex.Lock()
-		defer h.State.Mutex.Unlock()
+// Export: serializes the current state to SavedDownloadState
+func (h *DownloadHandler) Export() (*SavedDownloadState, error) {
+	h.State.Mutex.Lock()
+	defer h.State.Mutex.Unlock()
 
-		savedState := &SavedDownloadState{
-			URL: h.URL,
-			FilePath: h.FilePath,
-			CHUNK_SIZE: h.CHUNK_SIZE,
-			CompletedParts: h.State.Completed,
-			CurrByte: h.State.CurrentByte,
-			TotalBytes: h.State.TotalBytes,
-			PartsCount: h.PartsCount,
-			IsPaused: h.State.IsPaused,
-			IncompleteParts: make([]int, 0),
-		}
+	incompleteParts := make([]int64, 0, len(h.State.IncompleteParts))
+	for _, chunk := range h.State.IncompleteParts {
+		incompleteParts = append(incompleteParts, chunk.Start)
+	}
 
-		return savedState, nil
+	savedState := &SavedDownloadState{
+		URL:             h.URL,
+		FilePath:        h.FilePath,
+		CHUNK_SIZE:      h.CHUNK_SIZE,
+		CompletedParts:  h.State.Completed,
+		CurrByte:        h.State.CurrentByte,
+		TotalBytes:      h.State.TotalBytes,
+		PartsCount:      h.PartsCount,
+		IsPaused:        h.State.IsPaused,
+		IncompleteParts: incompleteParts,
+	}
+
+	return savedState, nil
 }
 
-func Import(state *SavedDownloadState, client *http.Client)  (*DownloadHandler, error)  {
-	if state == nil {
+// Import: creates a DownloadHandler from a SavedDownloadState
+func Import(state *SavedDownloadState, client *http.Client) (*DownloadHandler, error) {
+    if state == nil {
         return nil, fmt.Errorf("invalid state: nil")
     }
 
-	// new handler to return
-	handler := &DownloadHandler{
+    ctx, cancel := context.WithCancel(context.Background())
+    handler := &DownloadHandler{
         Client:        client,
         CHUNK_SIZE:    state.CHUNK_SIZE,
-        WORKERS_COUNT: 4, // Default value or could be added to SavedDownloadState
+        WORKERS_COUNT: 4,
         PartsCount:    state.PartsCount,
+        URL:           state.URL,
+        FilePath:      state.FilePath,
         PauseChan:     make(chan struct{}),
+        ResumeChan:    make(chan struct{}),
+        ctx:           ctx,
+        cancel:        cancel,
+        Progress: &ProgressTracker{
+            StartTime: time.Now(),
+        },
     }
 
-	// before creating and returning state we need to 
-	// create chunk slices for incomplete chuncks instead of int slice we had
-	incompleteParts := make([]chunk,0)
-	for _, start := range state.IncompleteParts {
+    incompleteParts := make([]chunk, 0, len(state.IncompleteParts))
+    for _, start := range state.IncompleteParts {
         end := start + state.CHUNK_SIZE - 1
-        if end > int(state.TotalBytes) {
-            end = int(state.TotalBytes)
+        if end >= state.TotalBytes {
+            end = state.TotalBytes - 1
         }
         incompleteParts = append(incompleteParts, chunk{Start: start, End: end})
     }
 
-	handler.State = &DownloadState{
+    // Recalculate CurrentByte from completed parts
+    currentByte := int64(0)
+    for i, completed := range state.CompletedParts {
+        if completed {
+            start := int64(i) * state.CHUNK_SIZE
+            end := start + state.CHUNK_SIZE - 1
+            if end >= state.TotalBytes {
+                end = state.TotalBytes - 1
+            }
+            currentByte += (end - start + 1)
+        }
+    }
+
+    handler.State = &DownloadState{
         Completed:       state.CompletedParts,
         IncompleteParts: incompleteParts,
-        CurrentByte:     state.CurrByte,
+        CurrentByte:     currentByte, // Use recalculated value
         TotalBytes:      state.TotalBytes,
-        Mutex:          sync.Mutex{},
-        IsPaused:       state.IsPaused,
-        isCombined:     false,
+        Mutex:           sync.Mutex{},
+        IsPaused:        state.IsPaused,
     }
-	
-	return handler, nil
+
+    return handler, nil
 }
 
-// same as save
-func (h *DownloadHandler) Serialize(Download *Download) ([]byte, error){
+// Serialize: converts the DownloadHandler state to JSON bytes
+func (h *DownloadHandler) Serialize() ([]byte, error) {
 	savedState, err := h.Export()
-	if err != nil{
+	if err != nil {
 		return nil, fmt.Errorf("failed to export download state: %v", err)
 	}
 
-	data , err := json.Marshal(savedState)
+	data, err := json.Marshal(savedState)
 	if err != nil {
-        return nil, fmt.Errorf("failed to serialize state: %v", err)
-    }
+		return nil, fmt.Errorf("failed to serialize state: %v", err)
+	}
 
 	return data, nil
 }
 
-
-func SerializeHandler(handler *DownloadHandler, download *Download) ([]byte, error) {
-	// exporting handler -> same as creating a state re port
-    savedState, err := handler.Export()
-    if err != nil {
-        return nil, fmt.Errorf("failed to export handler state: %v", err)
-    }
-
-    // convert state to json -> write a json file out of the state we exported from handler
-    data, err := json.Marshal(savedState)
-    if err != nil {
-        return nil, fmt.Errorf("failed to serialize state: %v", err)
-    }
-
-    return data, nil
-}
-
+// DeserializeHandler: creates a DownloadHandler from JSON bytes
 func DeserializeHandler(data []byte, client *http.Client) (*DownloadHandler, error) {
-    // first we need to read saved state fom json file
-    var state SavedDownloadState
-    if err := json.Unmarshal(data, &state); err != nil {
-        return nil, fmt.Errorf("failed to deserialize state: %v", err)
-    }
+	var state SavedDownloadState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return nil, fmt.Errorf("failed to deserialize state: %v", err)
+	}
 
-    // creating handler out of that saved state we exported from json file
-    return Import(&state, client)
+	return Import(&state, client)
 }
