@@ -36,6 +36,7 @@ type DownloadBody struct {
 	Status download.State
 	Progress float64 // percentage
 	Speed string // formatted string for speed
+	QueueName string
 }
 
 // this is a function used to remove an element from a slice

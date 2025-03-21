@@ -38,11 +38,11 @@ func (d *Download) GetProgress() float64 {
 
 func (d *Download) GetSpeed() string {
 	// formatted speed
-	return d.Handler.Progress.CurrentSpeedFormatted()
+	return d.Handler.Progress.GetCurrentSpeed()
 }
 
 func CreateDefaultHandler(d *Download) {
-	d.Handler = *d.NewDownloadHandler(&http.Client{Timeout: 0}, CHUNK_SIZE, WORKER_COUNT, 0)
+	d.Handler = *d.NewDownloadHandler(&http.Client{Timeout: 0}, 0)
 	// TODO check bandwidth limit because its buggy
 }
 

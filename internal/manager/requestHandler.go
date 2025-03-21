@@ -115,7 +115,7 @@ func (m *Manager) answerGetDLS(r util.Request) {
 	i := 0
 	for _, q := range m.qs {
 		for _, d := range q.DownloadLists {
-			body.Downloads[i] = convertToStaticDownload(&d)
+			body.Downloads[i] = convertToStaticDownload(&d, q.Name)
 			i++
 		}
 	}

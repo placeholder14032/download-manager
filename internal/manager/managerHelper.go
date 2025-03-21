@@ -94,7 +94,7 @@ func convertToStaticQueue(q *queue.Queue) util.QueueBody {
 	}
 }
 
-func convertToStaticDownload(d *download.Download) util.DownloadBody {
+func convertToStaticDownload(d *download.Download, q_name string) util.DownloadBody {
 	return util.DownloadBody{
 		ID: d.ID,
 		URL: d.URL,
@@ -102,6 +102,7 @@ func convertToStaticDownload(d *download.Download) util.DownloadBody {
 		Status: d.Status,
 		Progress: d.GetProgress(),
 		Speed: d.GetSpeed(),
+		QueueName: q_name,
 	}
 }
 
@@ -192,13 +193,9 @@ func (m *Manager) pauseDownload(dlID int64) error {
 	if dl.Status != download.Downloading {
 		return fmt.Errorf(DOWNLOAD_IS_NOT_IN_STATE, dlID, "Downloading")
 	}
-	err := dl.Handler.Pause()
-	if err == nil {
-		dl.Status = download.Paused
-	} else {
-		fmt.Println("cant pause", err)
-	}
-	return err
+	dl.Handler.Pause()
+	dl.Status = download.Paused
+	return nil
 }
 
 func (m *Manager) resumeDownload(dlID int64) error {
@@ -213,7 +210,7 @@ func (m *Manager) resumeDownload(dlID int64) error {
 	if !m.qs[i].IsSafeToRunDL() {
 		return fmt.Errorf(QUEUE_IS_FULL, m.qs[i].ID)
 	}
-	err := dl.Handler.Resume(*dl) // returns error or nil
+	err := dl.Handler.Resume() // returns error or nil
 	if err == nil {
 		dl.Status = download.Downloading
 	} else {
@@ -221,6 +218,7 @@ func (m *Manager) resumeDownload(dlID int64) error {
 		dl.Status = download.Failed
 	}
 	return err
+	return nil
 }
 
 func (m *Manager) retryDownload(dlID int64) error {
