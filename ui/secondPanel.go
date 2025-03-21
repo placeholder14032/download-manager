@@ -2,7 +2,6 @@ package ui
 
 import (
 	"strconv"
-	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -149,7 +148,7 @@ func DrawAllDownloads(app *tview.Application) {
 	app.SetRoot(allDownloadFlex, true).SetFocus(allDownloadTable)
 	StatePanel = "second"
 
-	for {
+	/*for {
 		allDownloads := controller.GetAllDownloads()
 		for i, download := range allDownloads {
 			statusCell := tview.NewTableCell(convertStateToString(download.Status)).SetSelectable(false).SetExpansion(1)
@@ -160,7 +159,7 @@ func DrawAllDownloads(app *tview.Application) {
 			allDownloadTable.SetCell(i+1, 5, speedCell)
 		}
 		time.Sleep(1 * time.Second)
-	}
+	}*/
 }
 
 func convertStateToString(state download.State) string {
