@@ -47,47 +47,59 @@ func (h *DownloadHandler) Export() (*SavedDownloadState, error) {
 
 // Import: creates a DownloadHandler from a SavedDownloadState
 func Import(state *SavedDownloadState, client *http.Client) (*DownloadHandler, error) {
-	if state == nil {
-		return nil, fmt.Errorf("invalid state: nil")
-	}
+    if state == nil {
+        return nil, fmt.Errorf("invalid state: nil")
+    }
 
-	ctx, cancel := context.WithCancel(context.Background())
+    ctx, cancel := context.WithCancel(context.Background())
+    handler := &DownloadHandler{
+        Client:        client,
+        CHUNK_SIZE:    state.CHUNK_SIZE,
+        WORKERS_COUNT: 4,
+        PartsCount:    state.PartsCount,
+        URL:           state.URL,
+        FilePath:      state.FilePath,
+        PauseChan:     make(chan struct{}),
+        ResumeChan:    make(chan struct{}),
+        ctx:           ctx,
+        cancel:        cancel,
+        Progress: &ProgressTracker{
+            StartTime: time.Now(),
+        },
+    }
 
-	handler := &DownloadHandler{
-		Client:        client,
-		CHUNK_SIZE:    state.CHUNK_SIZE,
-		WORKERS_COUNT: 4, // default value for now -> later we can calculate it
-		PartsCount:    state.PartsCount,
-		URL:           state.URL,
-		FilePath:      state.FilePath,
-		PauseChan:     make(chan struct{}),
-		ResumeChan:    make(chan struct{}),
-		ctx:           ctx,
-		cancel:        cancel,
-		Progress: &ProgressTracker{
-			StartTime: time.Now(),
-		},
-	}
+    incompleteParts := make([]chunk, 0, len(state.IncompleteParts))
+    for _, start := range state.IncompleteParts {
+        end := start + state.CHUNK_SIZE - 1
+        if end >= state.TotalBytes {
+            end = state.TotalBytes - 1
+        }
+        incompleteParts = append(incompleteParts, chunk{Start: start, End: end})
+    }
 
-	incompleteParts := make([]chunk, 0, len(state.IncompleteParts))
-	for _, start := range state.IncompleteParts {
-		end := start + state.CHUNK_SIZE - 1
-		if end >= state.TotalBytes {
-			end = state.TotalBytes - 1
-		}
-		incompleteParts = append(incompleteParts, chunk{Start: start, End: end})
-	}
+    // Recalculate CurrentByte from completed parts
+    currentByte := int64(0)
+    for i, completed := range state.CompletedParts {
+        if completed {
+            start := int64(i) * state.CHUNK_SIZE
+            end := start + state.CHUNK_SIZE - 1
+            if end >= state.TotalBytes {
+                end = state.TotalBytes - 1
+            }
+            currentByte += (end - start + 1)
+        }
+    }
 
-	handler.State = &DownloadState{
-		Completed:       state.CompletedParts,
-		IncompleteParts: incompleteParts,
-		CurrentByte:     state.CurrByte,
-		TotalBytes:      state.TotalBytes,
-		Mutex:           sync.Mutex{},
-		IsPaused:        state.IsPaused,
-	}
+    handler.State = &DownloadState{
+        Completed:       state.CompletedParts,
+        IncompleteParts: incompleteParts,
+        CurrentByte:     currentByte, // Use recalculated value
+        TotalBytes:      state.TotalBytes,
+        Mutex:           sync.Mutex{},
+        IsPaused:        state.IsPaused,
+    }
 
-	return handler, nil
+    return handler, nil
 }
 
 // Serialize: converts the DownloadHandler state to JSON bytes
