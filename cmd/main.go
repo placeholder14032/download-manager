@@ -38,10 +38,12 @@ func main() {
 
     downloadErr := make(chan error, 1)
 
-    if err := handler.StartDownloading(); err != nil {
-        downloadErr <- fmt.Errorf("initial download failed: %v", err)
-        return
-    }
+    start := time.Now()
+	if err := handler.StartDownloading(); err != nil {
+    	downloadErr <- fmt.Errorf("initial download failed: %v", err)
+    	return
+	}
+	fmt.Printf("Download completed in %.2f seconds\n", time.Since(start).Seconds())
 }
 // ------------------------------------------------------------------------------------------------------- Serializer
 // package main

@@ -37,8 +37,8 @@ func (h *DownloadHandler) updateProgress() {
 
 	// Update moving average for CurrentSpeed
     const maxSamples = 5 // Use last 5 samples for moving average
-    h.Progress.SpeedSamples = append(h.Progress.SpeedSamples, intervalElapsed)
-    if len(h.Progress.SpeedSamples) > maxSamples {
+    h.Progress.SpeedSamples = append(h.Progress.SpeedSamples, h.Progress.CurrentSpeed)
+        if len(h.Progress.SpeedSamples) > maxSamples {
         h.Progress.SpeedSamples = h.Progress.SpeedSamples[1:]
     }
 

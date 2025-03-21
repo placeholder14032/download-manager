@@ -222,21 +222,22 @@ func (h *DownloadHandler) downloadWithRanges(start int64, end int64) error {
 	var totalRead int64
 	counting := &countingReader{reader: resp.Body, count: &totalRead, handler: h}
 
-	// Apply bandwidth limit if set, wrapping the countingReader
 	var reader io.Reader = counting
-	if h.BandwidthLimit > 0 {
-		reader = NewLimitedReader(counting, h.BandwidthLimit)
-	}
+    if h.BandwidthLimit > 0 {
+        reader = NewLimitedReader(counting, h.BandwidthLimit)
+    }
 
-	// Write the chunk to the file
-	buffer := make([]byte, 4*1024) // 4 KB buffer
-	written, err := io.CopyBuffer(file, reader, buffer)
+
+    buffer := make([]byte, 4*1024)
+    written, err := io.CopyBuffer(file, reader, buffer)
     if err != nil {
         return fmt.Errorf("failed to write chunk: %v", err)
     }
-    if totalRead != expectedSize {
-        return fmt.Errorf("read %d bytes from server, expected %d bytes", totalRead, expectedSize)
-    }
+
+    // Update progress incrementally
+    h.State.Mutex.Lock()
+    h.State.CurrentByte += written
+    h.State.Mutex.Unlock()
 
     // ennsuring file is properly written
     if err := file.Sync(); err != nil {
