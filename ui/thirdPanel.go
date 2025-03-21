@@ -46,6 +46,8 @@ func DrawMainQueuePage(app *tview.Application) {
 }
 
 func drawNewQueue(app *tview.Application) {
+	errorTextView := tview.NewTextView().SetText("").SetTextColor(tcell.ColorRed)
+	errorView := ""
 	tabHeader := returnTabHeader()
 
 	header := tview.NewTextView().
@@ -122,8 +124,13 @@ func drawNewQueue(app *tview.Application) {
 	maxTryQueueInput.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
 			maxTryQueue, _ = strconv.ParseInt(maxTryQueueInput.GetText(), 10, 64)
-			controller.AddQueue(directoryQueue, nameQueue, maxSimultaneousQueue, maxBandwidthQueue, maxTryQueue, true, strToTimeStart(startTimeQueue), strToTimeEnd(endTimeQueue))
-			DrawMainQueuePage(app)
+			err := controller.AddQueue(directoryQueue, nameQueue, maxSimultaneousQueue, maxBandwidthQueue, maxTryQueue, true, strToTimeStart(startTimeQueue), strToTimeEnd(endTimeQueue))
+			if err != nil {
+				errorView = err.Error()
+				errorTextView.SetText(errorView)
+			} else {
+				DrawMainQueuePage(app)
+			}
 		}
 	}).SetAcceptanceFunc(tview.InputFieldInteger)
 
